@@ -5,6 +5,7 @@ import {
   sandboxCheckFailureMessage,
   sandboxEnvGuidanceLines,
   sandboxEnvGuidanceText,
+  sandboxProviderLabel,
 } from "./computer-sandbox.js";
 
 describe("computersAreUnavailable", () => {
@@ -27,6 +28,17 @@ describe("classifySandboxProvider", () => {
     expect(classifySandboxProvider("docker")).toBe("docker");
     expect(classifySandboxProvider("e2b")).toBe("hosted");
   });
+
+  it("does not treat a self-run Kubernetes cluster as hosted or Docker", () => {
+    expect(classifySandboxProvider("kubernetes")).toBe("other");
+  });
+});
+
+describe("sandboxProviderLabel", () => {
+  it("names Kubernetes", () => {
+    expect(sandboxProviderLabel("kubernetes")).toBe("Kubernetes");
+    expect(sandboxProviderLabel("e2b")).toBe("E2B");
+  });
 });
 
 describe("sandboxEnvGuidanceText", () => {
@@ -40,6 +52,8 @@ describe("sandboxEnvGuidanceText", () => {
     expect(text).toContain("# SANDBOX_PROVIDER=e2b");
     expect(text).toContain("# SANDBOX_PROVIDER=daytona");
     expect(text).toContain("# SANDBOX_PROVIDER=boat");
+    expect(text).toContain("# SANDBOX_PROVIDER=kubernetes");
+    expect(text).toContain("# KUBERNETES_SANDBOX_NAMESPACE=<namespace>");
   });
 });
 

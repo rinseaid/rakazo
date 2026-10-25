@@ -76,7 +76,7 @@ The API and worker talk to the Kubernetes API with their own service account (or
 | `KUBERNETES_SANDBOX_READY_TIMEOUT_MS` | `120000` | How long a new pod has to become ready |
 
 Each pod runs the image's own user (uid 1000) with no service account token and no service links,
-and is labelled `app.kubernetes.io/name=rakazo-computer` and `rakazo.ai/bot-id=<bot id>`. Commands,
+and is labelled `app.kubernetes.io/name=rakazo-computer` and `rakazo-bot-id=<bot id>`. Commands,
 file transfers and workspace save and restore go through `pods/exec`; save and restore stream the
 home as one tar archive. Screens use the image's desktop gateway on the pod IP, so the API, the
 worker and the web screen proxy must be able to reach pods in that namespace on port `6080` and the
