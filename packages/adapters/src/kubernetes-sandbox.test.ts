@@ -19,7 +19,7 @@ const context: AdapterContext = {
 };
 
 const readyPod: V1Pod = {
-  metadata: { name: "pod", labels: { "rakazo.ai/bot-id": "bot-a" } },
+  metadata: { name: "pod", labels: { "rakazo-bot-id": "bot-a" } },
   status: {
     phase: "Running",
     podIP: "10.0.0.8",
@@ -129,7 +129,7 @@ describe("KubernetesSandboxProvider", () => {
         labels: {
           "app.kubernetes.io/name": "rakazo-computer",
           "example.test/tier": "computer",
-          "rakazo.ai/bot-id": "bot-a",
+          "rakazo-bot-id": "bot-a",
         },
       },
       spec: {
@@ -255,7 +255,7 @@ describe("KubernetesSandboxProvider", () => {
     const read = vi
       .fn()
       .mockRejectedValueOnce(Object.assign(new Error("missing"), { code: 404 }))
-      .mockResolvedValue({ ...readyPod, metadata: { labels: { "rakazo.ai/bot-id": "bot-b" } } });
+      .mockResolvedValue({ ...readyPod, metadata: { labels: { "rakazo-bot-id": "bot-b" } } });
     const create = vi.fn().mockRejectedValue(Object.assign(new Error("conflict"), { code: 409 }));
     const provider = providerFor({ readNamespacedPod: read, createNamespacedPod: create });
     await expect(
@@ -267,7 +267,7 @@ describe("KubernetesSandboxProvider", () => {
     const provider = providerFor({
       readNamespacedPod: vi
         .fn()
-        .mockResolvedValue({ ...readyPod, metadata: { labels: { "rakazo.ai/bot-id": "bot-b" } } }),
+        .mockResolvedValue({ ...readyPod, metadata: { labels: { "rakazo-bot-id": "bot-b" } } }),
     });
     await expect(
       provider.provision(

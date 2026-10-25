@@ -32,6 +32,9 @@ const DEFAULT_COMPUTER_IMAGE = "ghcr.io/elie222/rakazo/computer:edge";
 const DEFAULT_READY_TIMEOUT_MS = 120_000;
 const WORKSPACE = "/home/rakazo";
 const CONTAINER_NAME = "computer";
+// Names the bot that owns a computer pod. A pod carrying another bot's value is
+// never reused or replaced.
+const BOT_ID_LABEL = "rakazo-bot-id";
 const READY_PORT = 6080;
 const DESKTOP_PORT_START = 6100;
 const MAX_FILE_BYTES = 64 * 1024 * 1024;
@@ -147,7 +150,7 @@ export class KubernetesSandboxProvider implements SandboxProvider {
         ? request.providerRef
         : podNameForBot(request.botId);
     let pod = await this.readPod(podName, context.signal);
-    if (pod && pod.metadata?.labels?.["rakazo.ai/bot-id"] !== request.botId) {
+    if (pod && pod.metadata?.labels?.[BOT_ID_LABEL] !== request.botId) {
       throw new Error(`Kubernetes pod ${podName} belongs to another bot`);
     }
 
@@ -168,7 +171,7 @@ export class KubernetesSandboxProvider implements SandboxProvider {
       } catch (error) {
         if (!isApiStatus(error, 409)) throw error;
         const existing = await this.readPod(podName, context.signal);
-        if (existing?.metadata?.labels?.["rakazo.ai/bot-id"] !== request.botId) {
+        if (existing?.metadata?.labels?.[BOT_ID_LABEL] !== request.botId) {
           throw new Error(`Kubernetes pod ${podName} belongs to another bot`);
         }
       }
@@ -500,7 +503,7 @@ export class KubernetesSandboxProvider implements SandboxProvider {
         labels: {
           ...this.podLabels,
           "app.kubernetes.io/name": "rakazo-computer",
-          "rakazo.ai/bot-id": botId,
+          [BOT_ID_LABEL]: botId,
         },
       },
       spec: {
