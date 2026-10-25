@@ -30,6 +30,11 @@ export function sandboxEnvGuidanceLines(): string[] {
     "# SANDBOX_PROVIDER=boat",
     "# BOAT_API_KEY=<your-key>",
     "",
+    "# Your own Kubernetes cluster (the API and worker run in it)",
+    "# SANDBOX_PROVIDER=kubernetes",
+    "# KUBERNETES_SANDBOX_NAMESPACE=<namespace>",
+    "# KUBERNETES_SANDBOX_COMPUTER_IMAGE=<computer-image-by-digest>",
+    "",
     "# Recreate the stack after changing .env",
   ];
 }
@@ -44,6 +49,9 @@ export function classifySandboxProvider(provider: string | null | undefined): Sa
   if (provider == null || provider === "" || computersAreUnavailable(provider)) return "none";
   if (provider === "docker" || provider === "desktop") return "docker";
   if (provider === "e2b" || provider === "daytona" || provider === "boat") return "hosted";
+  // Computers run in the operator's own cluster: nothing is billed, and the
+  // Docker copy (sandbox supervisor, recreate the stack) does not apply.
+  if (provider === "kubernetes") return "other";
   return "other";
 }
 
@@ -53,6 +61,7 @@ export function sandboxProviderLabel(provider: string): string {
   if (provider === "e2b") return "E2B";
   if (provider === "daytona") return "Daytona";
   if (provider === "boat") return "Boat";
+  if (provider === "kubernetes") return "Kubernetes";
   if (provider === "fake") return "Fake";
   return provider;
 }
