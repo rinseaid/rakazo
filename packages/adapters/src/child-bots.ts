@@ -675,6 +675,15 @@ async function sharedTeamComputer(
 }
 
 const REMOTE_TEAM_SANDBOX_KINDS = new Set(["e2b", "daytona", "boat", "createos", "kubernetes"]);
+
+/**
+ * Whether only the server writes this computer's stored home. A Kubernetes computer that
+ * mounts the server's home directory writes it itself, like a Docker computer.
+ */
+function serverOwnsTeamHome(sandbox: SandboxProvider, kind: string) {
+  if (!REMOTE_TEAM_SANDBOX_KINDS.has(kind)) return false;
+  return !(kind === "kubernetes" && sandbox.describe().capabilities.persistentHome);
+}
 // The bot is already deleted; whatever this misses is removed when the computer next boots.
 const LIVE_CLEANUP_BUDGET_MS = 10_000;
 
@@ -709,7 +718,7 @@ async function removeTeamBrowserProfile(
       getLogger().error("team browser profile cleanup", error);
     });
   }
-  if (!REMOTE_TEAM_SANDBOX_KINDS.has(computer.kind)) return;
+  if (!serverOwnsTeamHome(deps.sandbox, computer.kind)) return;
   const homeDir = resolveAgentHomePath(deps.home, computer.homeKey, deps.dataDir ?? "./data");
   await removeContainedDirectory(homeDir, ".browser-profiles", name).catch((error) => {
     getLogger().error("team browser profile cleanup", error);
@@ -769,7 +778,7 @@ async function removeTeamBotWorkspace(
   // Remote providers keep a stored copy that only the server writes, and replacement computers
   // restore from it. Any other home may be mounted by a running computer, where a bot could
   // swap bots/ for a symlink between the checks and rm, so it is only cleaned inside the computer.
-  if (REMOTE_TEAM_SANDBOX_KINDS.has(computer.kind)) {
+  if (serverOwnsTeamHome(deps.sandbox, computer.kind)) {
     const homeDir = resolveAgentHomePath(deps.home, computer.homeKey, deps.dataDir ?? "./data");
     await removeContainedDirectory(homeDir, "bots", bot.id).catch((error) => {
       getLogger().error("team bot folder cleanup", error);

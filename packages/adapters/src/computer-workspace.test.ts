@@ -111,6 +111,64 @@ describe("provider-neutral computer workspace", () => {
   });
 });
 
+describe("mounted Kubernetes homes", () => {
+  function kubernetesSandbox(persistentHome: boolean) {
+    const importWorkspace = vi.fn(async () => undefined);
+    const exportWorkspace = vi.fn(async function* () {});
+    const sandbox = {
+      describe: () => ({
+        id: "kubernetes",
+        contractVersion: "1",
+        adapterVersion: "test",
+        capabilities: {
+          graphical: true,
+          pty: true,
+          snapshots: true,
+          takeover: true,
+          persistentHome,
+          multiScreen: true,
+        },
+      }),
+      importWorkspace,
+      exportWorkspace,
+    } as unknown as SandboxProvider;
+    return { sandbox, importWorkspace, exportWorkspace };
+  }
+  const computer: ComputerRef = {
+    id: "pod",
+    botId: "bot-1",
+    kind: "kubernetes",
+    providerRef: "pod",
+  };
+
+  it("skips the copy when the pod mounts the local home", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "rakazo-workspace-store-"));
+    roots.push(root);
+    const home = new LocalAgentHomeStore(root);
+    const { sandbox, importWorkspace, exportWorkspace } = kubernetesSandbox(true);
+
+    await restoreComputerWorkspace(home, sandbox, "bot-1", computer, context);
+    const revision = await checkpointComputerWorkspace(home, sandbox, "bot-1", computer, context);
+
+    expect(importWorkspace).not.toHaveBeenCalled();
+    expect(exportWorkspace).not.toHaveBeenCalled();
+    expect(revision).toMatch(/^rev-/);
+  });
+
+  it("copies the home in and out when the pod has no mounted home", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "rakazo-workspace-store-"));
+    roots.push(root);
+    const home = new LocalAgentHomeStore(root);
+    const { sandbox, importWorkspace, exportWorkspace } = kubernetesSandbox(false);
+
+    await restoreComputerWorkspace(home, sandbox, "bot-1", computer, context);
+    await checkpointComputerWorkspace(home, sandbox, "bot-1", computer, context);
+
+    expect(importWorkspace).toHaveBeenCalledOnce();
+    expect(exportWorkspace).toHaveBeenCalledOnce();
+  });
+});
+
 describe("Team run checkpoints", () => {
   it("defers a remote export when another run prevents an exclusive checkpoint", async () => {
     const { checkpointRunComputerWorkspace } = await import("./computer-workspace.js");

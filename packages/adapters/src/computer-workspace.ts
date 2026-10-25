@@ -75,6 +75,13 @@ export function shouldSkipPortableWorkspaceFile(relative: string) {
   );
 }
 
+/** The computer already reads and writes the server's home directory, so there is nothing to copy. */
+function homeIsMounted(home: AgentHomeStore, sandbox: SandboxProvider, computer: ComputerRef) {
+  if (!(home instanceof LocalAgentHomeStore)) return false;
+  if (computer.kind === "docker") return true;
+  return computer.kind === "kubernetes" && sandbox.describe().capabilities.persistentHome;
+}
+
 export async function restoreComputerWorkspace(
   home: AgentHomeStore,
   sandbox: SandboxProvider,
@@ -82,7 +89,7 @@ export async function restoreComputerWorkspace(
   computer: ComputerRef,
   context: AdapterContext,
 ): Promise<void> {
-  if (computer.kind === "docker" && home instanceof LocalAgentHomeStore) return;
+  if (homeIsMounted(home, sandbox, computer)) return;
   await sandbox.importWorkspace(computer, home.exportHome(homeKey, context), context);
 }
 
@@ -309,7 +316,7 @@ export async function checkpointComputerWorkspace(
   computer: ComputerRef,
   context: AdapterContext,
 ): Promise<string> {
-  if (computer.kind === "docker" && home instanceof LocalAgentHomeStore) {
+  if (home instanceof LocalAgentHomeStore && homeIsMounted(home, sandbox, computer)) {
     return home.revise(homeKey);
   }
   const staging = await mkdtemp(path.join(tmpdir(), "rakazo-workspace-"));

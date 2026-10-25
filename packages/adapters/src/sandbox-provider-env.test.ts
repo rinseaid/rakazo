@@ -144,6 +144,23 @@ describe("sandboxProviderOptionsFromEnv", () => {
     expect(sandboxProviderOptionsFromEnv({}).kubernetesNamespace).toBeUndefined();
   });
 
+  it("loads the Kubernetes home claim and its pod-affinity target", () => {
+    expect(
+      sandboxProviderOptionsFromEnv({
+        KUBERNETES_SANDBOX_HOME_CLAIM: "rakazo-data",
+        KUBERNETES_SANDBOX_HOME_COLOCATE_NAMESPACE: "rakazo",
+        KUBERNETES_SANDBOX_HOME_COLOCATE_LABELS: '{"app":"rakazo-api"}',
+      }),
+    ).toMatchObject({
+      kubernetesHomeClaim: "rakazo-data",
+      kubernetesHomeColocateNamespace: "rakazo",
+      kubernetesHomeColocateLabels: { app: "rakazo-api" },
+    });
+    expect(() =>
+      sandboxProviderOptionsFromEnv({ KUBERNETES_SANDBOX_HOME_COLOCATE_LABELS: "rakazo-api" }),
+    ).toThrow("KUBERNETES_SANDBOX_HOME_COLOCATE_LABELS must be a JSON object of string values");
+  });
+
   it("rejects malformed Kubernetes label maps and timeouts", () => {
     expect(() =>
       sandboxProviderOptionsFromEnv({ KUBERNETES_SANDBOX_POD_LABELS: '["bots"]' }),
