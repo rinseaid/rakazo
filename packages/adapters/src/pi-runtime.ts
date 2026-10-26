@@ -42,6 +42,7 @@ import {
   isTransientModelError,
   ModelAccountError,
   ModelOutputError,
+  SubscriptionQuotaWaitError,
   TransientModelError,
 } from "@rakazo/adapter-kit";
 import {
@@ -913,6 +914,14 @@ export class PiAgentRuntime implements AgentRuntime {
           !budgetExceeded && terminalMessage ? providerFailureText(terminalMessage) : undefined;
         const error = agent.state.errorMessage || providerFailure;
         if (error && !budgetExceeded && (!host.pausePending || signal.aborted)) {
+          const capacity =
+            terminalMessage?.role === "assistant"
+              ? capacityDeclines.get(terminalMessage.content)
+              : undefined;
+          if (capacity && !signal.aborted && !host.pausePending) {
+            await host.captureCheckpoint?.("", "quota-wait");
+            throw new SubscriptionQuotaWaitError(capacity.retryAt);
+          }
           let message = sanitizeProviderError(activeStreamTarget.model.provider, error);
           if (
             !signal.aborted &&
@@ -984,13 +993,15 @@ export class PiAgentRuntime implements AgentRuntime {
         span?.setStatus({ status: "error" });
         const message = sanitizeError(error instanceof Error ? error.message : String(error));
         queue.fail(
-          error instanceof TransientModelError
-            ? new TransientModelError(message)
-            : error instanceof ModelAccountError
-              ? new ModelAccountError(message)
-              : error instanceof ModelOutputError
-                ? new ModelOutputError(message)
-                : new Error(message),
+          error instanceof SubscriptionQuotaWaitError
+            ? error
+            : error instanceof TransientModelError
+              ? new TransientModelError(message)
+              : error instanceof ModelAccountError
+                ? new ModelAccountError(message)
+                : error instanceof ModelOutputError
+                  ? new ModelOutputError(message)
+                  : new Error(message),
         );
       } finally {
         queue.close();
