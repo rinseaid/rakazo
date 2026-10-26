@@ -75,6 +75,7 @@ export * from "./signup-policy.js";
 export * from "./speech-locale.js";
 export * from "./speech-text.js";
 export * from "./stuck-work.js";
+export * from "./subscription-quota.js";
 export * from "./teach-playbook.js";
 export * from "./teach-recording.js";
 export * from "./text-direction.js";
