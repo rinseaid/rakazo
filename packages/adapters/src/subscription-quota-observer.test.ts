@@ -38,6 +38,8 @@ const credential = {
 };
 const call = {
   callId: "call-a",
+  runId: "run-a",
+  runLease: { owner: "worker-a", fence: 1 },
   provider: "openai-codex",
   modelId: "model-a",
   inputTokensEstimate: 100,
@@ -90,7 +92,12 @@ it("reserves the verified shared pool for the exact owned credential", async () 
     scope.userId,
     "pool-a",
     expect.anything(),
-    { id: call.callId, modelId: call.modelId, now: expect.any(Number) },
+    {
+      id: call.callId,
+      modelId: call.modelId,
+      owner: { runId: call.runId, leaseOwner: "worker-a", leaseFence: 1 },
+      now: expect.any(Number),
+    },
   );
   await f.observer.afterCall(call.callId, null);
   expect(settleSubscriptionQuota).toHaveBeenCalledWith(
@@ -144,3 +151,11 @@ it.each(["not-started", "provider-rejected"])(
     );
   },
 );
+
+it("rejects enabled admission without native worker ownership", async () => {
+  const f = fixture();
+  await expect(f.observer.beforeCall({ ...call, runLease: undefined })).rejects.toThrow(
+    "Model execution lease",
+  );
+  expect(reserveSubscriptionQuota).not.toHaveBeenCalled();
+});

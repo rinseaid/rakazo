@@ -309,7 +309,7 @@ msgstr "{provider} 回應超時。請重試。"
 msgid "{remaining} left"
 msgstr "剩餘 {remaining}"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "{remaining}% remaining"
 msgstr ""
 
@@ -639,7 +639,7 @@ msgstr "允許一次"
 msgid "Allow writing"
 msgstr "允許寫入"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Allowance"
 msgstr ""
 
@@ -1862,6 +1862,10 @@ msgstr "無法載入此對話。"
 #: src/components/ArtifactFileCard.tsx
 msgid "Could not load this file."
 msgstr "無法載入此檔案。"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Could not load usage"
+msgstr ""
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Could not load voice settings"
@@ -3142,7 +3146,7 @@ msgstr "上次檢查 {0}：有變化"
 msgid "Last check {0}: no changes"
 msgstr "上次檢查 {0}：無變化"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Last known usage"
 msgstr ""
 
@@ -3207,7 +3211,8 @@ msgstr "載入更早的執行紀錄"
 msgid "Load web images automatically"
 msgstr "自動載入網路圖片"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
+#: src/components/usage/provider-quota-stack.tsx
 #: src/pages/model-settings/quota-routing.tsx
 msgid "Loading"
 msgstr ""
@@ -3748,6 +3753,10 @@ msgstr "沒有機器人"
 msgid "No bots match"
 msgstr "沒有符合的機器人"
 
+#: src/components/usage/provider-quota-stack.tsx
+msgid "No connected providers"
+msgstr ""
+
 #: src/components/AskCard.tsx
 msgid "No longer active"
 msgstr "已停用"
@@ -4243,11 +4252,11 @@ msgstr "Pull request"
 msgid "Queued"
 msgstr "排隊中"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Quota"
 msgstr ""
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Quota unavailable"
 msgstr ""
 
@@ -4369,7 +4378,7 @@ msgstr "重新導向 URI"
 #: src/App.tsx
 #: src/components/ErrorBoundary.tsx
 #: src/components/ModelCredits.tsx
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 #: src/pages/RoutineRunHistory.tsx
 msgid "Refresh"
 msgstr "重新整理"
@@ -4552,7 +4561,7 @@ msgstr "重設電腦？"
 msgid "Reset password"
 msgstr "重設密碼"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Reset unknown"
 msgstr ""
 
@@ -4560,7 +4569,7 @@ msgstr ""
 msgid "Reset your password"
 msgstr "重設你的密碼"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Resets"
 msgstr ""
 
@@ -4660,7 +4669,7 @@ msgstr "例行任務"
 msgid "Routines that run while you're away"
 msgstr "在你離線時執行的例行任務"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/pages/ModelSettingsOverlay.tsx
 msgid "Routing"
 msgstr ""
 
@@ -4916,7 +4925,7 @@ msgstr "伺服器名稱"
 msgid "Server URL"
 msgstr "伺服器 URL"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Session"
 msgstr ""
 
@@ -5706,7 +5715,7 @@ msgstr "更新指令？"
 msgid "Update progress"
 msgstr "更新進度"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Updated"
 msgstr ""
 
@@ -5743,7 +5752,7 @@ msgstr "上傳"
 msgid "Urgent"
 msgstr "緊急"
 
-#: src/components/SidebarFooter.tsx
+#: src/components/usage/usage-popover.tsx
 #: src/pages/SettingsOverlay.tsx
 msgid "Usage"
 msgstr "用量"
@@ -5849,6 +5858,10 @@ msgstr "版本"
 msgid "View chat"
 msgstr "檢視聊天"
 
+#: src/components/usage/usage-popover.tsx
+msgid "View usage"
+msgstr ""
+
 #: src/pages/SettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx
 #: src/pages/SpaceSettingOverrides.tsx
@@ -5902,7 +5915,7 @@ msgstr "工作日"
 msgid "Weekends"
 msgstr "週末"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Weekly"
 msgstr ""
 
