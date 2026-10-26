@@ -18,6 +18,7 @@ const models = vi.hoisted(() => ({
   forRole: vi.fn(),
   setRole: vi.fn(),
   credentials: vi.fn(),
+  quota: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
   rename: vi.fn(),
@@ -332,6 +333,14 @@ beforeEach(() => {
   vi.mocked(rpc.me).mockResolvedValue(account("deepseek", "deepseek-chat"));
   models.list.mockResolvedValue([deepseekEntry]);
   models.credentials.mockResolvedValue([]);
+  models.quota.mockResolvedValue({
+    credentialId: "connection",
+    status: "unsupported",
+    observedAt: null,
+    checkedAt: new Date().toISOString(),
+    identityVerified: false,
+    windows: [],
+  });
   models.connect.mockResolvedValue({});
   models.disconnect.mockResolvedValue(undefined);
   models.forRole.mockImplementation(() => models.list());

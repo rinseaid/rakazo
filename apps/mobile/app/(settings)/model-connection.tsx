@@ -47,6 +47,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { ConnectionQuota } from "../../components/connection-quota";
 import { MenuPickerMenu } from "../../components/menu-picker";
 import { NativeActionButton } from "../../components/native-action-button";
 import { NativeSwitch } from "../../components/native-switch";
@@ -1262,6 +1263,9 @@ export default function ModelConnection() {
               {provider === me?.hostCredentialProvider ? serverCredentialsNote : null}
               {connectedStatusRow}
               {catalogConnectionControls}
+              {credential.authKind === "oauth" ? (
+                <ConnectionQuota key={credential.id} credentialId={credential.id} target={target} />
+              ) : null}
               {feedbackAnchor === "connection" ? feedback : null}
               {catalogModelCard}
             </>
