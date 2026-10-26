@@ -33,6 +33,7 @@ test("a custom usage endpoint saves and displays its own windows", async ({ page
     await page.getByTestId(`model-provider-${credential.id}`).getByRole("button").first().click();
     const selector = page.getByTestId("custom-usage");
     await selector.locator("summary").click();
+    await expect(selector).toContainText('"usedPercent":35');
     const endpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}/usage`;
     await selector.getByLabel("Usage endpoint URL").fill(endpoint);
     await selector.getByRole("button", { name: "Save", exact: true }).click();

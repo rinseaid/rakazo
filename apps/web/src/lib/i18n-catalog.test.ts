@@ -284,6 +284,7 @@ it("renders provider Usage labels from compiled catalogs without source fallback
     "CommandCode",
     "Usage not reported by provider",
     "Custom usage endpoint",
+    "Return JSON with named windows and percent used.",
     "Usage endpoint URL",
     "Usage endpoint token",
     "Usage endpoint token (optional)",

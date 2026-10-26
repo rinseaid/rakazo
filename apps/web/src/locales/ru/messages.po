@@ -6141,6 +6141,9 @@ msgstr "Usage endpoint token (optional)"
 msgid "Token will be removed when saved"
 msgstr "Token will be removed when saved"
 
+msgid "Return JSON with named windows and percent used."
+msgstr "Return JSON with named windows and percent used."
+
 #: src/lib/user-error.ts
 msgid "Your voice provider key was rejected."
 msgstr "Ваш голосовой провайдер отклонил ключ."

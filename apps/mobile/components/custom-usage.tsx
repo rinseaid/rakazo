@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { TextInput, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
 import { useI18n } from "../lib/i18n";
 import { native } from "../lib/native";
 import type { SettingsTarget } from "../lib/settings-target";
@@ -50,6 +50,12 @@ export function CustomUsage({
       />
       {expanded ? (
         <View style={{ padding: 14, gap: 12 }}>
+          <Text style={{ color: native.secondaryLabel }}>
+            {t("Return JSON with named windows and percent used.")}
+          </Text>
+          <Text selectable style={{ color: native.secondaryLabel }}>
+            {'{"windows":[{"id":"daily","usedPercent":35}]}'}
+          </Text>
           <TextInput
             accessibilityLabel={t("Usage endpoint URL")}
             placeholder="https://example.com/usage"

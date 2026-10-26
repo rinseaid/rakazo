@@ -29,6 +29,12 @@ export function CustomUsage({ credentialId }: { credentialId: string }) {
       <summary className="cursor-pointer text-sm">
         <Trans>Custom usage endpoint</Trans>
       </summary>
+      <p className="text-xs text-muted-foreground">
+        <Trans>Return JSON with named windows and percent used.</Trans>
+      </p>
+      <code className="block break-all text-xs">
+        {'{"windows":[{"id":"daily","usedPercent":35}]}'}
+      </code>
       <label htmlFor={`${id}-url`} className="block text-sm">
         <Trans>Usage endpoint URL</Trans>
       </label>
