@@ -19,6 +19,7 @@ const models = vi.hoisted(() => ({
   setRole: vi.fn(),
   credentials: vi.fn(),
   quota: vi.fn(),
+  quotaPolicy: vi.fn(async () => ({ enabled: false })),
   connect: vi.fn(),
   disconnect: vi.fn(),
   rename: vi.fn(),

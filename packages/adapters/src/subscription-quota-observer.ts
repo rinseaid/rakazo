@@ -71,6 +71,7 @@ export function subscriptionQuotaObserver(
           new Date(Date.now() + 60_000).toISOString(),
         );
       if (!call.callId) throw new Error("Model call identity is unavailable");
+      if (!call.runId || !call.runLease) throw new Error("Model execution lease is unavailable");
       const result = await reserveSubscriptionQuota(
         deps.prisma,
         scope.userId,
@@ -79,6 +80,11 @@ export function subscriptionQuotaObserver(
         {
           id: call.callId,
           modelId: call.modelId,
+          owner: {
+            runId: call.runId,
+            leaseOwner: call.runLease.owner,
+            leaseFence: call.runLease.fence,
+          },
           now: Date.now(),
         },
       );

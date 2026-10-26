@@ -33,8 +33,8 @@ import type { ModelRoleConnectIntent } from "./ModelRoleSettings";
 import { ModelRoleSettings } from "./ModelRoleSettings";
 import { CompatibleModelFields } from "./model-settings/compatible-model-fields";
 import { CompatibleKeyControls, ConnectionControls } from "./model-settings/connection-controls";
-import { ConnectionQuota } from "./model-settings/connection-quota";
 import { ConnectionNameField, ProvidersSection } from "./model-settings/providers-section";
+import { QuotaRouting } from "./model-settings/quota-routing";
 import type { ConnectableProvider } from "./model-settings/role-model-picker";
 import { SpaceBotsModelNotice } from "./model-settings/space-bots-model";
 import { useModelSettings } from "./model-settings/use-model-settings";
@@ -273,8 +273,12 @@ export function ModelSettingsOverlay({
             onRenamed={() => void refresh()}
           />
         ) : null}
-        {connected && credential?.authKind === "oauth" ? (
-          <ConnectionQuota credentialId={credential.id} />
+        {connected &&
+        credential?.authKind === "oauth" &&
+        ["anthropic", "openai-codex"].includes(credential.provider) ? (
+          <section className="mb-6" aria-label={t`Routing`}>
+            <QuotaRouting credentialId={credential.id} />
+          </section>
         ) : null}
         {connection}
       </fieldset>

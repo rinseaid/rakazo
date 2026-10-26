@@ -92,6 +92,20 @@ export function parseClaudeQuota(payload: unknown): ModelQuotaWindow[] {
   return windows;
 }
 
+/** OpenCode's official API reports all three subscription windows for this key. */
+export function parseGoQuota(payload: unknown): ModelQuotaWindow[] {
+  const usage = object(object(payload).usage);
+  const ids = { rolling: "five_hour", weekly: "seven_day", monthly: "monthly" };
+  if (Object.keys(usage).some((key) => !Object.hasOwn(ids, key))) throw new Error("schema");
+  return Object.entries(ids).map(([key, id]) => {
+    const window = object(usage[key]);
+    if (window.status !== "ok" && window.status !== "rate-limited") throw new Error("schema");
+    const resetsAt = reset(window.resetsAt);
+    if (!resetsAt) throw new Error("schema");
+    return { id, usedPercent: percent(window.percent), resetsAt, modelIds: null };
+  });
+}
+
 export type QuotaConnection = {
   userId: string;
   credentialId: string;
@@ -141,7 +155,7 @@ export class ModelQuotaReader {
   ) {}
 
   async read(connection: QuotaConnection, options: { fresh?: boolean } = {}): Promise<QuotaRead> {
-    const supported = ["openai-codex", "anthropic"].includes(connection.provider);
+    const supported = ["openai-codex", "anthropic", "opencode-go"].includes(connection.provider);
     const empty: QuotaRead = {
       view: {
         credentialId: connection.credentialId,
@@ -188,13 +202,14 @@ export class ModelQuotaReader {
     let read = empty;
     try {
       const codex = connection.provider === "openai-codex";
+      const go = connection.provider === "opencode-go";
       if (codex && !connection.accountId) throw new Error("identity");
       const headers: Record<string, string> = {
         authorization: `Bearer ${connection.accessToken}`,
         accept: "application/json",
       };
       if (codex) headers["chatgpt-account-id"] = connection.accountId!;
-      else headers["anthropic-beta"] = "oauth-2025-04-20";
+      else if (!go) headers["anthropic-beta"] = "oauth-2025-04-20";
       const get = async (url: string) =>
         jsonResponse(
           await this.fetchImpl(url, {
@@ -206,10 +221,12 @@ export class ModelQuotaReader {
       const payload = await get(
         codex
           ? "https://chatgpt.com/backend-api/wham/usage"
-          : "https://api.anthropic.com/api/oauth/usage",
+          : go
+            ? "https://opencode.ai/zen/go/v1/usage"
+            : "https://api.anthropic.com/api/oauth/usage",
       );
       let accountId = connection.accountId;
-      if (!codex) {
+      if (!codex && !go) {
         const profile = object(await get("https://api.anthropic.com/api/oauth/profile"));
         const account = object(profile.account);
         const organization = object(profile.organization);
@@ -227,12 +244,20 @@ export class ModelQuotaReader {
           ...empty.view,
           status: "fresh",
           observedAt: new Date(observedAt).toISOString(),
-          identityVerified: true,
-          windows: codex ? parseCodexQuota(payload) : parseClaudeQuota(payload),
+          identityVerified: !go,
+          windows: codex
+            ? parseCodexQuota(payload)
+            : go
+              ? parseGoQuota(payload)
+              : parseClaudeQuota(payload),
         },
-        poolKey: createHash("sha256")
-          .update(JSON.stringify([connection.userId, connection.provider, accountId]))
-          .digest("hex"),
+        // Go does not return a stable account identity. Its meter is read-only;
+        // never merge credentials or enable account admission by guessing one.
+        poolKey: go
+          ? null
+          : createHash("sha256")
+              .update(JSON.stringify([connection.userId, connection.provider, accountId]))
+              .digest("hex"),
       };
     } catch {
       // Provider errors can contain tokens and account identifiers. Preserve only

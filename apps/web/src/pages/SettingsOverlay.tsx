@@ -28,6 +28,7 @@ import type { ComponentType } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApprovalRulesSettings } from "../components/ApprovalRulesSettings";
 import { computersAreUnavailable } from "../components/ComputersUnavailableHint";
+import { ProviderQuotaStack } from "../components/usage/provider-quota-stack";
 import { desktopBridge } from "../lib/desktop";
 import { spaceQueries, useQueryUserId, writeSaved } from "../lib/query";
 import { SpaceRpcProvider } from "../lib/space-rpc";
@@ -395,7 +396,15 @@ export function SettingsOverlay({
                 ) : null}
                 {section === "confirmations" ? <ApprovalRulesSettings scope="account" /> : null}
                 {section === "usage" ? (
-                  <UsageSettingsPanel usage={usage} panelRef={usageRef} />
+                  <UsageSettingsPanel
+                    usage={usage}
+                    panelRef={usageRef}
+                    providerUsage={
+                      <div className="mb-6">
+                        <ProviderQuotaStack />
+                      </div>
+                    }
+                  />
                 ) : null}
                 {section === "computer" && showComputer ? (
                   <ComputerSettingsPanel
