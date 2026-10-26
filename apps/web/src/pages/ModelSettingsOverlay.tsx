@@ -33,6 +33,7 @@ import type { ModelRoleConnectIntent } from "./ModelRoleSettings";
 import { ModelRoleSettings } from "./ModelRoleSettings";
 import { CompatibleModelFields } from "./model-settings/compatible-model-fields";
 import { CompatibleKeyControls, ConnectionControls } from "./model-settings/connection-controls";
+import { ConnectionQuota } from "./model-settings/connection-quota";
 import { ConnectionNameField, ProvidersSection } from "./model-settings/providers-section";
 import type { ConnectableProvider } from "./model-settings/role-model-picker";
 import { SpaceBotsModelNotice } from "./model-settings/space-bots-model";
@@ -271,6 +272,9 @@ export function ModelSettingsOverlay({
             credential={credential}
             onRenamed={() => void refresh()}
           />
+        ) : null}
+        {connected && credential?.authKind === "oauth" ? (
+          <ConnectionQuota credentialId={credential.id} />
         ) : null}
         {connection}
       </fieldset>

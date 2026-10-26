@@ -308,6 +308,10 @@ msgstr "{provider} לא הגיב בזמן. אפשר לנסות שוב."
 msgid "{remaining} left"
 msgstr "נותרו {remaining}"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "{remaining}% remaining"
+msgstr ""
+
 #: src/pages/BillingSettingsPanel.tsx
 msgid "{seats, plural, one {# seat} other {# seats}}"
 msgstr "{seats, plural, one {# מושב} other {# מושבים}}"
@@ -633,6 +637,10 @@ msgstr "אישור חד-פעמי"
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Allow writing"
 msgstr "לאפשר כתיבה"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Allowance"
+msgstr ""
 
 #: src/components/AskCard.tsx
 msgid "Allowed once"
@@ -3125,6 +3133,10 @@ msgstr ""
 msgid "Last check {0}: no changes"
 msgstr ""
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Last known usage"
+msgstr ""
+
 #: src/components/DesktopUpdates.tsx
 msgid "Later"
 msgstr "מאוחר יותר"
@@ -3185,6 +3197,10 @@ msgstr "טעינת הרצות ישנות יותר"
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Load web images automatically"
 msgstr "טעינה אוטומטית של תמונות מהרשת"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Loading"
+msgstr ""
 
 #: src/pages/ActivityList.tsx
 msgid "Loading activity…"
@@ -4217,6 +4233,14 @@ msgstr "Pull request"
 msgid "Queued"
 msgstr "בתור"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Quota"
+msgstr ""
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Quota unavailable"
+msgstr ""
+
 #: src/components/ModelCredits.tsx
 #: src/pages/Onboarding.tsx
 msgid "Rakazo credits"
@@ -4335,6 +4359,7 @@ msgstr "כתובת הפניה (Redirect URI)"
 #: src/App.tsx
 #: src/components/ErrorBoundary.tsx
 #: src/components/ModelCredits.tsx
+#: src/pages/model-settings/connection-quota.tsx
 #: src/pages/RoutineRunHistory.tsx
 msgid "Refresh"
 msgstr "רענון"
@@ -4517,9 +4542,17 @@ msgstr "לאפס את המחשב?"
 msgid "Reset password"
 msgstr "איפוס סיסמה"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Reset unknown"
+msgstr ""
+
 #: src/pages/Auth.tsx
 msgid "Reset your password"
 msgstr "איפוס הסיסמה"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Resets"
+msgstr ""
 
 #: src/components/ComputerMaintenanceActions.tsx
 msgid "Resetting…"
@@ -4866,6 +4899,10 @@ msgstr "שם השרת"
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Server URL"
 msgstr "URL של השרת"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Session"
+msgstr ""
 
 #: src/components/call/CallCard.tsx
 #: src/components/SidebarFooter.tsx
@@ -5649,6 +5686,10 @@ msgstr "לעדכן את ההוראות?"
 msgid "Update progress"
 msgstr "התקדמות העדכון"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Updated"
+msgstr ""
+
 #: src/pages/shell/bot-credentials.tsx
 msgid "Updated {updated}"
 msgstr "עודכן {updated}"
@@ -5840,6 +5881,10 @@ msgstr "שני עד שישי"
 #: src/lib/cron.ts
 msgid "Weekends"
 msgstr "סופי שבוע"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Weekly"
+msgstr ""
 
 #: src/components/SignupSurvey.tsx
 msgid "Welcome to Rakazo"

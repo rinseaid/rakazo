@@ -308,6 +308,10 @@ msgstr "{provider}의 응답 시간이 초과되었습니다. 다시 시도하�
 msgid "{remaining} left"
 msgstr "남은 시간 {remaining}"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "{remaining}% remaining"
+msgstr ""
+
 #: src/pages/BillingSettingsPanel.tsx
 msgid "{seats, plural, one {# seat} other {# seats}}"
 msgstr ""
@@ -632,6 +636,10 @@ msgstr "한 번 허용"
 
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Allow writing"
+msgstr ""
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Allowance"
 msgstr ""
 
 #: src/components/AskCard.tsx
@@ -3125,6 +3133,10 @@ msgstr "마지막 확인 {0}: 변경됨"
 msgid "Last check {0}: no changes"
 msgstr "마지막 확인 {0}: 변경 없음"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Last known usage"
+msgstr ""
+
 #: src/components/DesktopUpdates.tsx
 msgid "Later"
 msgstr ""
@@ -3185,6 +3197,10 @@ msgstr "이전 실행 불러오기"
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Load web images automatically"
 msgstr "웹 이미지 자동으로 불러오기"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Loading"
+msgstr ""
 
 #: src/pages/ActivityList.tsx
 msgid "Loading activity…"
@@ -4217,6 +4233,14 @@ msgstr "풀 리퀘스트"
 msgid "Queued"
 msgstr "대기 중"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Quota"
+msgstr ""
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Quota unavailable"
+msgstr ""
+
 #: src/components/ModelCredits.tsx
 #: src/pages/Onboarding.tsx
 msgid "Rakazo credits"
@@ -4335,6 +4359,7 @@ msgstr "리디렉션 URI"
 #: src/App.tsx
 #: src/components/ErrorBoundary.tsx
 #: src/components/ModelCredits.tsx
+#: src/pages/model-settings/connection-quota.tsx
 #: src/pages/RoutineRunHistory.tsx
 msgid "Refresh"
 msgstr "새로고침"
@@ -4517,9 +4542,17 @@ msgstr "컴퓨터를 재설정할까요?"
 msgid "Reset password"
 msgstr "비밀번호 재설정"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Reset unknown"
+msgstr ""
+
 #: src/pages/Auth.tsx
 msgid "Reset your password"
 msgstr "비밀번호를 재설정하세요"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Resets"
+msgstr ""
 
 #: src/components/ComputerMaintenanceActions.tsx
 msgid "Resetting…"
@@ -4866,6 +4899,10 @@ msgstr "서버 이름"
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Server URL"
 msgstr "서버 URL"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Session"
+msgstr ""
 
 #: src/components/call/CallCard.tsx
 #: src/components/SidebarFooter.tsx
@@ -5649,6 +5686,10 @@ msgstr "지침을 업데이트할까요?"
 msgid "Update progress"
 msgstr ""
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Updated"
+msgstr ""
+
 #: src/pages/shell/bot-credentials.tsx
 msgid "Updated {updated}"
 msgstr ""
@@ -5840,6 +5881,10 @@ msgstr "주중"
 #: src/lib/cron.ts
 msgid "Weekends"
 msgstr "주말"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Weekly"
+msgstr ""
 
 #: src/components/SignupSurvey.tsx
 msgid "Welcome to Rakazo"

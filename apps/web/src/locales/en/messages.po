@@ -308,6 +308,10 @@ msgstr "{provider} took too long to respond. Try again."
 msgid "{remaining} left"
 msgstr "{remaining} left"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "{remaining}% remaining"
+msgstr "{remaining}% remaining"
+
 #: src/pages/BillingSettingsPanel.tsx
 msgid "{seats, plural, one {# seat} other {# seats}}"
 msgstr "{seats, plural, one {# seat} other {# seats}}"
@@ -633,6 +637,10 @@ msgstr "Allow once"
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Allow writing"
 msgstr "Allow writing"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Allowance"
+msgstr "Allowance"
 
 #: src/components/AskCard.tsx
 msgid "Allowed once"
@@ -3125,6 +3133,10 @@ msgstr "Last check {0}: changed"
 msgid "Last check {0}: no changes"
 msgstr "Last check {0}: no changes"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Last known usage"
+msgstr "Last known usage"
+
 #: src/components/DesktopUpdates.tsx
 msgid "Later"
 msgstr "Later"
@@ -3185,6 +3197,10 @@ msgstr "Load older runs"
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Load web images automatically"
 msgstr "Load web images automatically"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Loading"
+msgstr "Loading"
 
 #: src/pages/ActivityList.tsx
 msgid "Loading activity…"
@@ -4217,6 +4233,14 @@ msgstr "Pull request"
 msgid "Queued"
 msgstr "Queued"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Quota"
+msgstr "Quota"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Quota unavailable"
+msgstr "Quota unavailable"
+
 #: src/components/ModelCredits.tsx
 #: src/pages/Onboarding.tsx
 msgid "Rakazo credits"
@@ -4335,6 +4359,7 @@ msgstr "Redirect URI"
 #: src/App.tsx
 #: src/components/ErrorBoundary.tsx
 #: src/components/ModelCredits.tsx
+#: src/pages/model-settings/connection-quota.tsx
 #: src/pages/RoutineRunHistory.tsx
 msgid "Refresh"
 msgstr "Refresh"
@@ -4517,9 +4542,17 @@ msgstr "Reset computer?"
 msgid "Reset password"
 msgstr "Reset password"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Reset unknown"
+msgstr "Reset unknown"
+
 #: src/pages/Auth.tsx
 msgid "Reset your password"
 msgstr "Reset your password"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Resets"
+msgstr "Resets"
 
 #: src/components/ComputerMaintenanceActions.tsx
 msgid "Resetting…"
@@ -4866,6 +4899,10 @@ msgstr "Server name"
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Server URL"
 msgstr "Server URL"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Session"
+msgstr "Session"
 
 #: src/components/call/CallCard.tsx
 #: src/components/SidebarFooter.tsx
@@ -5649,6 +5686,10 @@ msgstr "Update instructions?"
 msgid "Update progress"
 msgstr "Update progress"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Updated"
+msgstr "Updated"
+
 #: src/pages/shell/bot-credentials.tsx
 msgid "Updated {updated}"
 msgstr "Updated {updated}"
@@ -5840,6 +5881,10 @@ msgstr "Weekdays"
 #: src/lib/cron.ts
 msgid "Weekends"
 msgstr "Weekends"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Weekly"
+msgstr "Weekly"
 
 #: src/components/SignupSurvey.tsx
 msgid "Welcome to Rakazo"
