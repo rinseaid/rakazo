@@ -92,3 +92,47 @@ describe("connection quota authorization", () => {
     });
   });
 });
+
+it("passes only the owned Go API key to its read-only quota reader", async () => {
+  const f = fixture();
+  f.deps.prisma.userModelCredential.findFirst.mockResolvedValue({
+    id: "connection-a",
+    userId: actor.userId,
+    provider: "opencode-go",
+    secretId: "secret-a",
+  });
+  f.load.mockResolvedValue(JSON.stringify({ kind: "api_key", key: "go-test-key" }));
+  await readConnectionQuota(f.ctx, f.reader, actor, "connection-a");
+  expect(f.read).toHaveBeenCalledWith(
+    expect.objectContaining({ provider: "opencode-go", accessToken: "go-test-key" }),
+    { fresh: true },
+  );
+  expect(f.refreshExpiredCredential).not.toHaveBeenCalled();
+});
+
+it("passes the owned compatible endpoint and exact API key without provider-name guessing", async () => {
+  const f = fixture();
+  f.deps.prisma.userModelCredential.findFirst.mockResolvedValue({
+    id: "connection-a",
+    userId: actor.userId,
+    provider: "openai-compatible",
+    secretId: "secret-a",
+  });
+  f.load.mockResolvedValue(
+    JSON.stringify({
+      kind: "openai_compatible",
+      baseUrl: "https://api.commandcode.ai/provider/v1",
+      apiKey: "compatible-test-key",
+    }),
+  );
+  await readConnectionQuota(f.ctx, f.reader, actor, "connection-a");
+  expect(f.read).toHaveBeenCalledWith(
+    expect.objectContaining({
+      provider: "openai-compatible",
+      baseUrl: "https://api.commandcode.ai/provider/v1",
+      accessToken: "compatible-test-key",
+    }),
+    { fresh: true },
+  );
+  expect(f.refreshExpiredCredential).not.toHaveBeenCalled();
+});

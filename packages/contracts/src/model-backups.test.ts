@@ -316,3 +316,16 @@ describe("withConnectionName", () => {
     );
   });
 });
+
+it("does not repeat the recognized compatible service's saved preset name", () => {
+  expect(
+    connectionDisplayName(
+      {
+        provider: "openai-compatible",
+        label: "CommandCode",
+        baseUrl: "https://api.commandcode.ai/provider/v1",
+      },
+      "OpenAI-compatible",
+    ),
+  ).toBe("CommandCode");
+});

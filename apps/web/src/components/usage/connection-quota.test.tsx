@@ -115,3 +115,20 @@ it("does not fabricate remaining quota when the reader fails", async () => {
   expect(host.textContent).toContain("Quota unavailable");
   expect(host.querySelector("meter")).toBeNull();
 });
+
+it("distinguishes unsupported provider reporting from a failed quota read", async () => {
+  read.mockResolvedValue({ ...observation, status: "unsupported", windows: [], observedAt: null });
+  const host = await mount();
+  expect(host.textContent).toContain("Usage not reported by provider");
+  expect(host.textContent).not.toContain("Quota unavailable");
+  expect(host.querySelector("meter")).toBeNull();
+});
+it("labels the exhausted monthly Go allowance", async () => {
+  read.mockResolvedValue({
+    ...observation,
+    windows: [{ ...observation.windows[0], id: "monthly", usedPercent: 100 }],
+  });
+  const host = await mount();
+  expect(host.textContent).toContain("Monthly");
+  expect(host.textContent).toContain("0% remaining");
+});

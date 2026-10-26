@@ -19,10 +19,16 @@ export async function readConnectionQuota(
   });
   let accessToken: string | null = null;
   let accountId: string | undefined;
+  let baseUrl: string | undefined;
   if (secret) {
     try {
       const stored = parseModelSecret(await ctx.deps.secrets.load(secret.ciphertext, secret.id));
-      if (stored.kind === "oauth") {
+      if (row.provider === "opencode-go" && stored.kind === "api_key") {
+        accessToken = stored.key;
+      } else if (row.provider === "openai-compatible" && stored.kind === "openai_compatible") {
+        baseUrl = stored.baseUrl;
+        accessToken = stored.apiKey ?? null;
+      } else if (stored.kind === "oauth") {
         if (stored.credential.expires > Date.now() + 30_000) {
           accessToken = stored.credential.access;
           accountId = oauthCredentialAccountId(stored.credential);
@@ -42,6 +48,7 @@ export async function readConnectionQuota(
       revision: secret?.ciphertext ?? row.secretId,
       accessToken,
       accountId,
+      baseUrl,
     },
     { fresh: true },
   );

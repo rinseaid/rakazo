@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ModelQuota, ModelQuotaWindow } from "@rakazo/contracts";
+import { isCommandCodeBaseUrl, isOpenCodeGoBaseUrl } from "@rakazo/contracts";
 
 const MAX_BYTES = 64 * 1024;
 const MAX_AGE_MS = 60_000;
@@ -92,6 +93,83 @@ export function parseClaudeQuota(payload: unknown): ModelQuotaWindow[] {
   return windows;
 }
 
+/** OpenCode's official API reports all three subscription windows for this key. */
+export function parseGoQuota(payload: unknown): ModelQuotaWindow[] {
+  const usage = object(object(payload).usage);
+  const ids = { rolling: "five_hour", weekly: "seven_day", monthly: "monthly" };
+  if (Object.keys(usage).some((key) => !Object.hasOwn(ids, key))) throw new Error("schema");
+  return Object.entries(ids).map(([key, id]) => {
+    const window = object(usage[key]);
+    if (window.status !== "ok" && window.status !== "rate-limited") throw new Error("schema");
+    const resetsAt = reset(window.resetsAt);
+    if (!resetsAt) throw new Error("schema");
+    return { id, usedPercent: percent(window.percent), resetsAt, modelIds: null };
+  });
+}
+
+/** GOAT includes 70 monthly plan credits; purchased credits do not expand that pool. */
+export function parseCommandCodeQuota(
+  creditsPayload: unknown,
+  subscriptionPayload: unknown,
+): ModelQuotaWindow[] {
+  const billing = object(creditsPayload);
+  const credits = object(billing.credits);
+  const limits = object(billing.windowLimits);
+  const subscription = object(object(subscriptionPayload).data);
+  if (
+    subscription.status !== "active" ||
+    typeof subscription.planId !== "string" ||
+    !/^individual-goat(?:$|-)/.test(subscription.planId.toLowerCase().replace(/_/g, "-")) ||
+    limits.limited !== true ||
+    typeof credits.monthlyCredits !== "number" ||
+    !Number.isFinite(credits.monthlyCredits) ||
+    credits.monthlyCredits < 0 ||
+    credits.monthlyCredits > 70
+  )
+    throw new Error("schema");
+  const windows = [
+    ["fiveHour", "five_hour"],
+    ["weekly", "seven_day"],
+  ].map(([key, id]) => {
+    const window = object(limits[key!]);
+    if (
+      typeof window.used !== "number" ||
+      !Number.isFinite(window.used) ||
+      window.used < 0 ||
+      typeof window.cap !== "number" ||
+      !Number.isFinite(window.cap) ||
+      window.cap <= 0
+    )
+      throw new Error("schema");
+    // CommandCode numeric dates are milliseconds, unlike Codex reset_at seconds.
+    const resetsAt = commandCodeReset(window.resetAt);
+    if (!resetsAt && window.used !== 0) throw new Error("schema");
+    return {
+      id: id!,
+      usedPercent: Math.min(100, (100 * window.used) / window.cap),
+      resetsAt,
+      modelIds: null,
+    };
+  });
+  const resetsAt = commandCodeReset(subscription.currentPeriodEnd);
+  if (!resetsAt) throw new Error("schema");
+  windows.push({
+    id: "monthly",
+    usedPercent: (100 * (70 - credits.monthlyCredits)) / 70,
+    resetsAt,
+    modelIds: null,
+  });
+  return windows;
+}
+
+function commandCodeReset(value: unknown): string | null {
+  if (value === null || value === undefined || value === 0) return null;
+  if (typeof value !== "string" && typeof value !== "number") throw new Error("schema");
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime()) || date.getTime() <= 0) throw new Error("schema");
+  return date.toISOString();
+}
+
 export type QuotaConnection = {
   userId: string;
   credentialId: string;
@@ -100,6 +178,7 @@ export type QuotaConnection = {
   revision: string;
   accessToken: string | null;
   accountId?: string;
+  baseUrl?: string;
 };
 export type QuotaRead = { view: ModelQuota; poolKey: string | null };
 
@@ -141,7 +220,12 @@ export class ModelQuotaReader {
   ) {}
 
   async read(connection: QuotaConnection, options: { fresh?: boolean } = {}): Promise<QuotaRead> {
-    const supported = ["openai-codex", "anthropic"].includes(connection.provider);
+    const commandCode =
+      connection.provider === "openai-compatible" && isCommandCodeBaseUrl(connection.baseUrl);
+    const supported =
+      commandCode ||
+      (connection.provider === "openai-compatible" && isOpenCodeGoBaseUrl(connection.baseUrl)) ||
+      ["openai-codex", "anthropic", "opencode-go"].includes(connection.provider);
     const empty: QuotaRead = {
       view: {
         credentialId: connection.credentialId,
@@ -159,6 +243,7 @@ export class ModelQuotaReader {
       connection.userId,
       connection.provider,
       connection.credentialId,
+      connection.baseUrl,
       revision,
     ]);
     const cached = this.cache.get(key);
@@ -183,18 +268,24 @@ export class ModelQuotaReader {
       connection.userId,
       connection.provider,
       connection.credentialId,
+      connection.baseUrl,
       revision,
     ]);
     let read = empty;
     try {
       const codex = connection.provider === "openai-codex";
+      const go =
+        connection.provider === "opencode-go" ||
+        (connection.provider === "openai-compatible" && isOpenCodeGoBaseUrl(connection.baseUrl));
+      const commandCode =
+        connection.provider === "openai-compatible" && isCommandCodeBaseUrl(connection.baseUrl);
       if (codex && !connection.accountId) throw new Error("identity");
       const headers: Record<string, string> = {
         authorization: `Bearer ${connection.accessToken}`,
         accept: "application/json",
       };
       if (codex) headers["chatgpt-account-id"] = connection.accountId!;
-      else headers["anthropic-beta"] = "oauth-2025-04-20";
+      else if (!go && !commandCode) headers["anthropic-beta"] = "oauth-2025-04-20";
       const get = async (url: string) =>
         jsonResponse(
           await this.fetchImpl(url, {
@@ -203,13 +294,29 @@ export class ModelQuotaReader {
             signal: AbortSignal.timeout(10_000),
           }),
         );
-      const payload = await get(
-        codex
-          ? "https://chatgpt.com/backend-api/wham/usage"
-          : "https://api.anthropic.com/api/oauth/usage",
-      );
+      let commandCodeWindows: ModelQuotaWindow[] | undefined;
+      if (commandCode) {
+        const who = object(await get("https://api.commandcode.ai/alpha/whoami?limits=1"));
+        const org = who.org === null || who.org === undefined ? null : object(who.org);
+        if (org && (typeof org.id !== "string" || !org.id)) throw new Error("identity");
+        const query = org ? `?${new URLSearchParams({ orgId: org.id as string })}` : "";
+        const [credits, subscription] = await Promise.all([
+          get(`https://api.commandcode.ai/alpha/billing/credits${query}`),
+          get(`https://api.commandcode.ai/alpha/billing/subscriptions${query}`),
+        ]);
+        commandCodeWindows = parseCommandCodeQuota(credits, subscription);
+      }
+      const payload = commandCode
+        ? null
+        : await get(
+            codex
+              ? "https://chatgpt.com/backend-api/wham/usage"
+              : go
+                ? "https://opencode.ai/zen/go/v1/usage"
+                : "https://api.anthropic.com/api/oauth/usage",
+          );
       let accountId = connection.accountId;
-      if (!codex) {
+      if (!codex && !go && !commandCode) {
         const profile = object(await get("https://api.anthropic.com/api/oauth/profile"));
         const account = object(profile.account);
         const organization = object(profile.organization);
@@ -227,12 +334,23 @@ export class ModelQuotaReader {
           ...empty.view,
           status: "fresh",
           observedAt: new Date(observedAt).toISOString(),
-          identityVerified: true,
-          windows: codex ? parseCodexQuota(payload) : parseClaudeQuota(payload),
+          identityVerified: !go && !commandCode,
+          windows:
+            commandCodeWindows ??
+            (codex
+              ? parseCodexQuota(payload)
+              : go
+                ? parseGoQuota(payload)
+                : parseClaudeQuota(payload)),
         },
-        poolKey: createHash("sha256")
-          .update(JSON.stringify([connection.userId, connection.provider, accountId]))
-          .digest("hex"),
+        // API-key meters remain read-only without a verified account-pool contract;
+        // never merge credentials or enable account admission by guessing one.
+        poolKey:
+          go || commandCode
+            ? null
+            : createHash("sha256")
+                .update(JSON.stringify([connection.userId, connection.provider, accountId]))
+                .digest("hex"),
       };
     } catch {
       // Provider errors can contain tokens and account identifiers. Preserve only

@@ -1,6 +1,6 @@
 import type { ModelCatalogEntry } from "@rakazo/contracts";
 import { describe, expect, it } from "vitest";
-import { providerRowHint } from "./localized-provider-hint";
+import { providerDisplayName, providerRowHint } from "./localized-provider-hint";
 
 const entry = (overrides: Partial<ModelCatalogEntry>) =>
   ({ provider: "p", id: "m", label: "M", auth: "api-key", ...overrides }) as ModelCatalogEntry;
@@ -15,4 +15,8 @@ describe("providerRowHint", () => {
     expect(providerRowHint(entry({ signIn: "device-code" }))).toBe("Sign in");
     expect(providerRowHint(entry({ auth: "oauth" }))).toBe("Skip or deploy key");
   });
+});
+
+it("names the Codex provider independently of the account label", () => {
+  expect(providerDisplayName("openai-codex", "OpenAI Codex", "oauth")).toBe("Codex");
 });
