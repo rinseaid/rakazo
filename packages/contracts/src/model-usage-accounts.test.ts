@@ -59,20 +59,10 @@ describe("usage account selection", () => {
       );
     expect(supportsUsageAccount({ ...gateway, usageAccountIds: [] })).toBe(false);
   });
-  it("shows a shared upstream once and names every linked gateway", () => {
-    const other = { ...gateway, id: "other", label: "Other gateway", hasKey: false };
-    expect(connectionUsageGroups([account, gateway, other])).toEqual([
-      { credential: account, gateways: [gateway, other] },
-    ]);
-  });
-  it("removing all links restores the gateway's ordinary direct readout", () => {
-    const direct = { ...gateway, usageAccountIds: [] };
-    expect(connectionUsageGroups([account, direct])).toHaveLength(2);
-  });
-  it("keeps a linked account visible when its credentials become unavailable", () => {
-    const unavailable = { ...account, hasKey: false };
-    expect(connectionUsageGroups([unavailable, gateway])).toEqual([
-      { credential: unavailable, gateways: [gateway] },
+  it("ignores retired links and shows each connected provider independently", () => {
+    expect(connectionUsageGroups([account, gateway])).toEqual([
+      { credential: account, gateways: [] },
+      { credential: gateway, gateways: [] },
     ]);
   });
 });

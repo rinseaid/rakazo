@@ -93,7 +93,9 @@ function QuotaWindow({ window, compact }: { window: ModelQuotaWindow; compact: b
         ? t`Weekly`
         : window.id === "monthly"
           ? t`Monthly`
-          : t`Allowance`;
+          : window.id === "primary_window" || window.id === "secondary_window"
+            ? t`Allowance`
+            : window.id;
   return (
     <div className="space-y-1">
       <div className={`flex justify-between gap-3 ${compact ? "text-xs" : "text-sm"}`}>

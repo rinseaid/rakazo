@@ -49,12 +49,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ConnectionQuota } from "../../components/connection-quota";
+import { CustomUsage } from "../../components/custom-usage";
 import { MenuPickerMenu } from "../../components/menu-picker";
 import { NativeActionButton } from "../../components/native-action-button";
 import { NativeSwitch } from "../../components/native-switch";
 import { Checkmark } from "../../components/row-accessories";
 import { SettingsRow } from "../../components/settings-group";
-import { UsageAccounts } from "../../components/usage-accounts";
 import type { MobileMe, MobileModel, MobileModelCredential } from "../../lib/api";
 import { mobileTokens } from "../../lib/appearance";
 import { useI18n } from "../../lib/i18n";
@@ -1261,35 +1261,13 @@ export default function ModelConnection() {
               {compatKeySection}
               {feedbackAnchor === "probe" ? null : feedback}
               {connectedStatusRow}
-              {credential ? (
-                <UsageAccounts
-                  key={credential.id}
-                  credential={credential}
-                  credentials={credentials}
-                  target={target}
-                  labelFor={(entry) =>
-                    connectionDisplayName(
-                      entry,
-                      entry.provider === "openai-codex"
-                        ? t("Codex")
-                        : (catalog.find((model) => model.provider === entry.provider)
-                            ?.providerName ?? entry.provider),
-                    )
-                  }
-                  onSaved={(usageAccountIds) =>
-                    setCredentials((current) =>
-                      current.map((entry) =>
-                        entry.id === credential.id ? { ...entry, usageAccountIds } : entry,
-                      ),
-                    )
-                  }
-                />
-              ) : null}
+              {credential ? <CustomUsage credentialId={credential.id} target={target} /> : null}
             </>
           ) : credential ? (
             <>
               {provider === me?.hostCredentialProvider ? serverCredentialsNote : null}
               {connectedStatusRow}
+              <CustomUsage credentialId={credential.id} target={target} />
               {catalogConnectionControls}
               {credential.authKind === "oauth" ? (
                 <ConnectionQuota key={credential.id} credentialId={credential.id} target={target} />

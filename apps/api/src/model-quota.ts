@@ -1,6 +1,7 @@
 import { ORPCError } from "@orpc/server";
 import type { ModelQuotaReader } from "@rakazo/adapters";
 import { oauthCredentialAccountId, parseModelSecret } from "@rakazo/adapters";
+import { readCustomUsage } from "./custom-usage.js";
 import type { RouterContext } from "./routes/context.js";
 
 /** Resolve the exact owned connection; never borrow a provider's default key. */
@@ -14,6 +15,7 @@ export async function readConnectionQuota(
     where: { id: credentialId, userId: actor.userId },
   });
   if (!row) throw new ORPCError("NOT_FOUND");
+  if (row.customUsageSecretId && row.customUsageCiphertext) return readCustomUsage(ctx, row);
   const secret = await ctx.deps.prisma.secret.findFirst({
     where: { id: row.secretId, userId: actor.userId, spaceId: null },
   });

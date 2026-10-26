@@ -429,6 +429,8 @@ model UserModelCredential {
   secretId    String
   supportsImages Boolean              @default(false)
   quotaPolicy Json?
+  customUsageSecretId String?
+  customUsageCiphertext String?
   usageAccounts UserModelUsageAccount[] @relation("GatewayUsageAccounts")
   usageGateways UserModelUsageAccount[] @relation("UpstreamUsageAccounts")
   createdAt   DateTime               @default(now())

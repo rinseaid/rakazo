@@ -285,6 +285,18 @@ export const appContract = {
     setUsageAccounts: oc
       .input(z.object({ credentialId: Id, usageAccountIds: z.array(Id).max(32) }))
       .output(z.object({ usageAccountIds: z.array(Id) })),
+    customUsage: oc
+      .input(z.object({ credentialId: Id }))
+      .output(z.object({ endpoint: z.string().nullable(), hasToken: z.boolean() })),
+    setCustomUsage: oc
+      .input(
+        z.object({
+          credentialId: Id,
+          endpoint: z.string().trim().max(2048).nullable(),
+          token: z.string().max(8192).optional(),
+        }),
+      )
+      .output(z.object({ endpoint: z.string().nullable(), hasToken: z.boolean() })),
     quota: oc.input(z.object({ credentialId: Id })).output(ModelQuotaSchema),
     quotaPolicy: oc.input(z.object({ credentialId: Id })).output(ModelQuotaPolicySchema),
     setQuotaPolicy: oc

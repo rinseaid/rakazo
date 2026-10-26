@@ -6123,3 +6123,25 @@ msgstr "Linked to {gatewayNames}"
 #: src/lib/user-error.ts
 msgid "Your voice provider key was rejected."
 msgstr "你的语音提供方拒绝了该密钥。"
+
+
+msgid "Custom usage endpoint"
+msgstr "Custom usage endpoint"
+
+msgid "Usage endpoint URL"
+msgstr "Usage endpoint URL"
+
+msgid "Usage endpoint token"
+msgstr "Usage endpoint token"
+
+msgid "Remove saved token"
+msgstr "Remove saved token"
+
+msgid "Could not save usage endpoint"
+msgstr "Could not save usage endpoint"
+
+msgid "Usage endpoint token (optional)"
+msgstr "Usage endpoint token (optional)"
+
+msgid "Token will be removed when saved"
+msgstr "Token will be removed when saved"

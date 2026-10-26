@@ -18,6 +18,8 @@ const models = vi.hoisted(() => ({
   forRole: vi.fn(),
   setRole: vi.fn(),
   credentials: vi.fn(),
+  customUsage: vi.fn(async () => ({ endpoint: null, hasToken: false })),
+  setCustomUsage: vi.fn(),
   quota: vi.fn(),
   quotaPolicy: vi.fn(async () => ({ enabled: false })),
   connect: vi.fn(),

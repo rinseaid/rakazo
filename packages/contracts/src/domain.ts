@@ -1214,6 +1214,7 @@ export const ModelCredentialSchema = z.object({
   preferenceRank: z.number().int().nonnegative().optional(),
   /** Explicit read-only upstream Usage links; never inference credentials. */
   usageAccountIds: z.array(Id).optional(),
+  hasCustomUsage: z.boolean().optional(),
   ...ModelContextLimitsSchema.shape,
   id: Id,
   provider: z.string(),

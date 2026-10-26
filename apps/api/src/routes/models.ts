@@ -43,6 +43,7 @@ import {
   updateModelRole,
   writeModelRole,
 } from "@rakazo/db";
+import { getCustomUsage, setCustomUsage } from "../custom-usage.js";
 import { mayUsePrivateEndpoint } from "../mcp-servers.js";
 import {
   modelConnectionTarget,
@@ -79,6 +80,12 @@ export function modelsRoutes(ctx: RouterContext) {
           input.credentialId,
           input.usageAccountIds,
         ),
+      ),
+      customUsage: authed.models.customUsage.handler(({ context, input }) =>
+        getCustomUsage(ctx, context.actor, input.credentialId),
+      ),
+      setCustomUsage: authed.models.setCustomUsage.handler(({ context, input }) =>
+        setCustomUsage(ctx, context.actor, input),
       ),
       quota: authed.models.quota.handler(
         async ({ context, input }) =>
@@ -161,6 +168,7 @@ export function modelsRoutes(ctx: RouterContext) {
               return {
                 ...shown,
                 usageAccountIds: (row.usageAccounts ?? []).map((link) => link.usageAccountId),
+                hasCustomUsage: Boolean(row.customUsageSecretId && row.customUsageCiphertext),
                 ...(shown.enabledModelIds
                   ? {
                       enabledModelIds: [

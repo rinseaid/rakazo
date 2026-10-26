@@ -33,11 +33,11 @@ import type { ModelRoleConnectIntent } from "./ModelRoleSettings";
 import { ModelRoleSettings } from "./ModelRoleSettings";
 import { CompatibleModelFields } from "./model-settings/compatible-model-fields";
 import { CompatibleKeyControls, ConnectionControls } from "./model-settings/connection-controls";
+import { CustomUsage } from "./model-settings/custom-usage";
 import { ConnectionNameField, ProvidersSection } from "./model-settings/providers-section";
 import { QuotaRouting } from "./model-settings/quota-routing";
 import type { ConnectableProvider } from "./model-settings/role-model-picker";
 import { SpaceBotsModelNotice } from "./model-settings/space-bots-model";
-import { UsageAccounts } from "./model-settings/usage-accounts";
 import { useModelSettings } from "./model-settings/use-model-settings";
 
 export function ModelSettingsOverlay({
@@ -287,13 +287,8 @@ export function ModelSettingsOverlay({
           </section>
         ) : null}
         {connection}
-        {connected && credential && isOpenAiCompatible ? (
-          <UsageAccounts
-            key={`usage-accounts:${credential.id}`}
-            credential={credential}
-            credentials={credentials}
-            labelFor={connectionName}
-          />
+        {connected && credential ? (
+          <CustomUsage key={`custom-usage:${credential.id}`} credentialId={credential.id} />
         ) : null}
       </fieldset>
     </div>

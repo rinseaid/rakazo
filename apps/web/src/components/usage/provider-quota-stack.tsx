@@ -27,8 +27,7 @@ export function ProviderQuotaStack({ compact = false }: { compact?: boolean }) {
           <Trans>No connected providers</Trans>
         </p>
       ) : null}
-      {groups.map(({ credential, gateways }) => {
-        const gatewayNames = gateways.map((gateway) => gateway.label).join(", ");
+      {groups.map(({ credential }) => {
         const providerName = providerDisplayName(
           credential.provider,
           catalog.data?.find((entry) => entry.provider === credential.provider)?.providerName ??
@@ -49,14 +48,6 @@ export function ProviderQuotaStack({ compact = false }: { compact?: boolean }) {
             data-testid={`provider-quota-${credential.id}`}
             className={`${compact ? "py-3" : "py-4"} first:pt-0 last:pb-0`}
           >
-            {gateways.length ? (
-              <p
-                className="mb-2 break-words text-xs text-muted-foreground"
-                data-testid="usage-gateway-links"
-              >
-                <Trans>Linked to {gatewayNames}</Trans>
-              </p>
-            ) : null}
             <ConnectionQuota
               credentialId={credential.id}
               label={label}
