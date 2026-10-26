@@ -17,3 +17,15 @@ export const ModelQuotaSchema = z.object({
   windows: z.array(ModelQuotaWindowSchema),
 });
 export type ModelQuota = z.infer<typeof ModelQuotaSchema>;
+
+export const ModelQuotaPolicySchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    reservePercent: z.number().min(0).max(99).default(10),
+    requestPercent: z.number().positive().max(100).nullable().default(null),
+    uncertaintyPercent: z.number().positive().max(100).default(1),
+  })
+  .refine((policy) => !policy.enabled || policy.requestPercent !== null, {
+    message: "Set a request estimate before enabling quota routing",
+  });
+export type ModelQuotaPolicy = z.infer<typeof ModelQuotaPolicySchema>;

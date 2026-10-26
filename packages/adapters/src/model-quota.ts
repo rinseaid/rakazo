@@ -67,8 +67,27 @@ export function parseClaudeQuota(payload: unknown): ModelQuotaWindow[] {
   // Model-specific windows must not gate unrelated models. Until the provider
   // supplies an unambiguous model mapping, report this observation unavailable.
   for (const [key, value] of Object.entries(body)) {
-    if (key.startsWith("seven_day_") && value !== null && value !== undefined)
+    if (
+      key.startsWith("seven_day_") &&
+      key !== "seven_day_breakdown" &&
+      value !== null &&
+      value !== undefined
+    )
       throw new Error("schema");
+  }
+  if (body.limits !== undefined) {
+    if (!Array.isArray(body.limits)) throw new Error("schema");
+    for (const raw of body.limits) {
+      const limit = object(raw);
+      const id =
+        limit.kind === "session" ? "five_hour" : limit.kind === "weekly_all" ? "seven_day" : null;
+      if (
+        !id ||
+        limit.scope !== null ||
+        percent(limit.percent) !== windows.find((window) => window.id === id)?.usedPercent
+      )
+        throw new Error("schema");
+    }
   }
   return windows;
 }

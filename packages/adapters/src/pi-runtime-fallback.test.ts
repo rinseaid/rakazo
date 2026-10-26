@@ -9,6 +9,7 @@ import type {
 } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import type { AgentRunRequest, AgentRuntimeEvent, ModelCallObserver } from "@rakazo/adapter-kit";
+import { SubscriptionQuotaDeclinedError } from "@rakazo/adapter-kit";
 import type * as Core from "@rakazo/core";
 import { normalizeRunError } from "@rakazo/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -607,6 +608,78 @@ describe("Pi runtime transient model retries", () => {
 });
 
 describe("Pi runtime ordered model fallback", () => {
+  it("skips a known exhausted account without issuing its model request", async () => {
+    const input = request([{ provider: backupA.provider, id: backupA.id, apiKey: "backup-key" }]);
+    input.model.callObserver = {
+      beforeCall: async () => {
+        throw new SubscriptionQuotaDeclinedError(
+          "headroom",
+          new Date(Date.now() + 60_000).toISOString(),
+        );
+      },
+      afterCall: async () => undefined,
+    };
+    providerState.stream.mockImplementation((target: Model<"openai-completions">) =>
+      stream(target, message(target, [{ type: "text", text: "Backup response." }], "stop")),
+    );
+    const events = await run(input);
+    expect(providerState.stream).toHaveBeenCalledTimes(1);
+    expect(providerState.stream.mock.calls[0]?.[0]).toMatchObject({ provider: backupA.provider });
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "text", text: "Backup response." }),
+    );
+  });
+
+  it("switches after a tool result without repeating the completed effect", async () => {
+    const input = request([{ provider: backupA.provider, id: backupA.id, apiKey: "backup-key" }]);
+    let admissions = 0;
+    input.model.callObserver = {
+      beforeCall: async () => {
+        if (++admissions > 1)
+          throw new SubscriptionQuotaDeclinedError(
+            "headroom",
+            new Date(Date.now() + 60_000).toISOString(),
+          );
+        return "first-call";
+      },
+      afterCall: async () => undefined,
+    };
+    providerState.stream.mockImplementation(
+      (target: Model<"openai-completions">, context: Context) => {
+        if (target.provider === primary.provider)
+          return stream(
+            target,
+            message(
+              target,
+              [
+                {
+                  type: "toolCall",
+                  id: "write-once",
+                  name: "write_effect",
+                  arguments: { value: "write-once" },
+                },
+              ],
+              "toolUse",
+            ),
+          );
+        expect(JSON.stringify(context.messages)).toContain("write-once");
+        return stream(
+          target,
+          message(target, [{ type: "text", text: "Finished safely." }], "stop"),
+        );
+      },
+    );
+    const events = await run(input);
+    expect(input.executeTool).toHaveBeenCalledTimes(1);
+    expect(providerState.stream.mock.calls.map(([target]) => target.provider)).toEqual([
+      primary.provider,
+      backupA.provider,
+    ]);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "text", text: "Finished safely." }),
+    );
+  });
+
   it.each(["absent", "empty"])(
     "passes the original stream options and terminal content through with %s backups",
     async (backups) => {

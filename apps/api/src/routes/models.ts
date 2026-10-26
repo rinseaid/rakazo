@@ -52,6 +52,7 @@ import {
 } from "../model-credentials.js";
 import { assertCompatibleDefaultChange } from "../model-pins.js";
 import { readConnectionQuota } from "../model-quota.js";
+import { connectionQuotaPolicy, updateConnectionQuotaPolicy } from "../model-quota-policy.js";
 import { withSerializableRetry } from "../serializable-retry.js";
 import type { RouterContext } from "./context.js";
 
@@ -74,6 +75,26 @@ export function modelsRoutes(ctx: RouterContext) {
         async ({ context, input }) =>
           (await readConnectionQuota(ctx, quotaReader, context.actor, input.credentialId)).view,
       ),
+      quotaPolicy: authed.models.quotaPolicy.handler(async ({ context, input }) => {
+        return connectionQuotaPolicy(deps.prisma, context.actor.userId, input.credentialId);
+      }),
+      setQuotaPolicy: authed.models.setQuotaPolicy.handler(async ({ context, input }) => {
+        return updateConnectionQuotaPolicy(
+          deps.prisma,
+          context.actor.userId,
+          input.credentialId,
+          input.policy,
+          async () => {
+            const quota = await readConnectionQuota(
+              ctx,
+              quotaReader,
+              context.actor,
+              input.credentialId,
+            );
+            return Boolean(quota.poolKey && quota.view.status === "fresh");
+          },
+        );
+      }),
       list: authed.models.list.handler(async ({ context }) => chatCatalog(context.actor)),
       credentials: authed.models.credentials.handler(async ({ context }) => {
         const [rows, main] = await Promise.all([

@@ -1834,6 +1834,10 @@ msgstr "無法載入 MCP 伺服器"
 msgid "Could not load model settings"
 msgstr "無法載入模型設定"
 
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Could not load routing settings"
+msgstr ""
+
 #: src/pages/RoutineRunHistory.tsx
 msgid "Could not load run history"
 msgstr "無法載入執行歷史紀錄"
@@ -1964,6 +1968,10 @@ msgstr "無法儲存模型"
 #: src/pages/shell/use-routine-editor.ts
 msgid "Could not save routine"
 msgstr "無法儲存例行任務"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Could not save routing settings"
+msgstr ""
 
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Could not save rule"
@@ -2561,6 +2569,10 @@ msgstr "錯誤"
 #: src/components/McpServerHealthLine.tsx
 msgid "Error details"
 msgstr "錯誤詳細資訊"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Estimates remain reserved until the applicable window resets."
+msgstr ""
 
 #: src/lib/cron.ts
 #: src/pages/ExternalConversationSettings.tsx
@@ -3200,6 +3212,7 @@ msgid "Load web images automatically"
 msgstr "自動載入網路圖片"
 
 #: src/pages/model-settings/connection-quota.tsx
+#: src/pages/model-settings/quota-routing.tsx
 msgid "Loading"
 msgstr ""
 
@@ -4242,6 +4255,10 @@ msgstr ""
 msgid "Quota unavailable"
 msgstr ""
 
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Quota-aware routing"
+msgstr ""
+
 #: src/components/ModelCredits.tsx
 #: src/pages/Onboarding.tsx
 msgid "Rakazo credits"
@@ -4514,6 +4531,10 @@ msgstr "正在回覆 {0}"
 msgid "Request a new code"
 msgstr "請重新獲取驗證碼"
 
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Request estimate (%)"
+msgstr ""
+
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Requests"
 msgstr "請求"
@@ -4521,6 +4542,10 @@ msgstr "請求"
 #: src/pages/shell/message-cards.tsx
 msgid "Research & writing"
 msgstr "調研和寫作"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Reserve (%)"
+msgstr ""
 
 #: src/components/ComputerMaintenanceActions.tsx
 #: src/pages/shell/avatar-studio-popover.tsx
@@ -4651,6 +4676,10 @@ msgstr "例行任務"
 msgid "Routines that run while you're away"
 msgstr "在你離線時執行的例行任務"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Routing"
+msgstr ""
+
 #: src/components/markdown-copy.tsx
 msgid "Row"
 msgstr "列"
@@ -4705,6 +4734,7 @@ msgstr "週六"
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/model-settings/connection-controls.tsx
 #: src/pages/model-settings/providers-section.tsx
+#: src/pages/model-settings/quota-routing.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/shell/bot-panel.tsx
@@ -4728,6 +4758,7 @@ msgstr "儲存工作空間並安裝最新軟體。"
 #: src/components/AskCard.tsx
 #: src/components/teach/SkillDraftCard.tsx
 #: src/pages/ExternalConversationSettings.tsx
+#: src/pages/model-settings/quota-routing.tsx
 msgid "Saved"
 msgstr "已儲存"
 
@@ -4903,6 +4934,10 @@ msgstr "伺服器 URL"
 
 #: src/pages/model-settings/connection-quota.tsx
 msgid "Session"
+msgstr ""
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Set a request estimate before enabling quota routing"
 msgstr ""
 
 #: src/components/call/CallCard.tsx
@@ -5621,6 +5656,10 @@ msgstr "輸入你的回答"
 #: src/pages/Shell.tsx
 msgid "Unassigned"
 msgstr "未分配"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Uncertainty (%)"
+msgstr ""
 
 #: src/components/AskCard.tsx
 msgid "Undo"

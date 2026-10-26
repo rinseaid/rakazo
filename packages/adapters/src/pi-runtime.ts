@@ -34,6 +34,7 @@ import type {
   AgentUsage,
   ConnectorTool,
   ModelCallObserver,
+  SubscriptionQuotaDeclinedError,
 } from "@rakazo/adapter-kit";
 import {
   DEFAULT_CONTEXT_STRATEGY,
@@ -422,6 +423,10 @@ export class PiAgentRuntime implements AgentRuntime {
         };
         // The idle watchdog may clone a terminal message, preserving its content array.
         const providerFailures = new WeakSet<AssistantMessage["content"]>();
+        const capacityDeclines = new WeakMap<
+          AssistantMessage["content"],
+          SubscriptionQuotaDeclinedError
+        >();
         const hasBackups = Boolean(request.fallbackModels?.length);
         let agent: Agent;
         let activeStreamTarget = host.activeModel;
@@ -430,6 +435,7 @@ export class PiAgentRuntime implements AgentRuntime {
           getActive: () => activeStreamTarget,
           signal,
           isProviderFailure: (message) => providerFailures.has(message.content),
+          capacityDecline: (message) => capacityDeclines.get(message.content),
           attempted: new Set<string>(),
           nextIndex: 0,
           backupOutcomes: new Map(),
@@ -460,6 +466,8 @@ export class PiAgentRuntime implements AgentRuntime {
                     ...usageHooks,
                     prepareContext,
                     onProviderError: (message) => providerFailures.add(message.content),
+                    onCapacityDeclined: (message, error) =>
+                      capacityDeclines.set(message.content, error),
                   },
                 ),
               target.config.cacheCapabilities?.retentionMode,
@@ -2709,6 +2717,7 @@ interface FallbackStreamState {
   onSwitch(target: RuntimeModelTarget): Promise<void>;
   onContextLimit(contextWindow: number): void;
   isProviderFailure(message: AssistantMessage): boolean;
+  capacityDecline?(message: AssistantMessage): SubscriptionQuotaDeclinedError | undefined;
   /** Set once a provider rejected replayed thinking signatures; see thinking-signatures.ts. */
   dropThinkingBlocks?: boolean;
   /** Output reservations reduced by a rejected request, scoped to this run and model. */
@@ -3174,8 +3183,9 @@ function fallbackAwareModelStream(
               !hasTerminalVisibleOutput &&
               event.reason === "error" &&
               !signalAborted() &&
-              state.isProviderFailure(event.error) &&
-              isRetryableProviderUnavailable(event.error)
+              (state.capacityDecline?.(event.error) ||
+                (state.isProviderFailure(event.error) &&
+                  isRetryableProviderUnavailable(event.error)))
             ) {
               state.primaryFailure ??= sanitizeProviderError(
                 target.config.provider,
