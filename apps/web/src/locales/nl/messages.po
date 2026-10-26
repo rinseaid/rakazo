@@ -308,7 +308,7 @@ msgstr "{provider} deed er te lang over om te antwoorden. Probeer het opnieuw."
 msgid "{remaining} left"
 msgstr "Nog {remaining} over"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "{remaining}% remaining"
 msgstr ""
 
@@ -638,7 +638,7 @@ msgstr "Een keer toestaan"
 msgid "Allow writing"
 msgstr "Schrijven toestaan"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Allowance"
 msgstr ""
 
@@ -1861,6 +1861,10 @@ msgstr "Deze chat laden mislukt."
 #: src/components/ArtifactFileCard.tsx
 msgid "Could not load this file."
 msgstr "Dit bestand laden mislukt."
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Could not load usage"
+msgstr ""
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Could not load voice settings"
@@ -3141,7 +3145,7 @@ msgstr "Laatste controle {0}: gewijzigd"
 msgid "Last check {0}: no changes"
 msgstr "Laatste controle {0}: geen wijzigingen"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Last known usage"
 msgstr ""
 
@@ -3206,7 +3210,8 @@ msgstr "Oudere runs laden"
 msgid "Load web images automatically"
 msgstr "Webafbeeldingen automatisch laden"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
+#: src/components/usage/provider-quota-stack.tsx
 #: src/pages/model-settings/quota-routing.tsx
 msgid "Loading"
 msgstr ""
@@ -3747,6 +3752,10 @@ msgstr "Geen bots"
 msgid "No bots match"
 msgstr "Geen bots gevonden"
 
+#: src/components/usage/provider-quota-stack.tsx
+msgid "No connected providers"
+msgstr ""
+
 #: src/components/AskCard.tsx
 msgid "No longer active"
 msgstr "Niet langer actief"
@@ -4242,11 +4251,11 @@ msgstr "Pull request"
 msgid "Queued"
 msgstr "In wachtrij"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Quota"
 msgstr ""
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Quota unavailable"
 msgstr ""
 
@@ -4368,7 +4377,7 @@ msgstr "Omleidings-URI"
 #: src/App.tsx
 #: src/components/ErrorBoundary.tsx
 #: src/components/ModelCredits.tsx
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 #: src/pages/RoutineRunHistory.tsx
 msgid "Refresh"
 msgstr "Vernieuwen"
@@ -4551,7 +4560,7 @@ msgstr "Computer opnieuw instellen?"
 msgid "Reset password"
 msgstr "Wachtwoord opnieuw instellen"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Reset unknown"
 msgstr ""
 
@@ -4559,7 +4568,7 @@ msgstr ""
 msgid "Reset your password"
 msgstr "Je wachtwoord opnieuw instellen"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Resets"
 msgstr ""
 
@@ -4659,7 +4668,7 @@ msgstr "Routines"
 msgid "Routines that run while you're away"
 msgstr "Routines die draaien terwijl je weg bent"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/pages/ModelSettingsOverlay.tsx
 msgid "Routing"
 msgstr ""
 
@@ -4915,7 +4924,7 @@ msgstr "Servernaam"
 msgid "Server URL"
 msgstr "Server-URL"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Session"
 msgstr ""
 
@@ -5705,7 +5714,7 @@ msgstr "Instructies bijwerken?"
 msgid "Update progress"
 msgstr "Updatevoortgang"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Updated"
 msgstr ""
 
@@ -5742,7 +5751,7 @@ msgstr "Uploaden"
 msgid "Urgent"
 msgstr "Dringend"
 
-#: src/components/SidebarFooter.tsx
+#: src/components/usage/usage-popover.tsx
 #: src/pages/SettingsOverlay.tsx
 msgid "Usage"
 msgstr "Gebruik"
@@ -5848,6 +5857,10 @@ msgstr "Versie"
 msgid "View chat"
 msgstr "Chat bekijken"
 
+#: src/components/usage/usage-popover.tsx
+msgid "View usage"
+msgstr ""
+
 #: src/pages/SettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx
 #: src/pages/SpaceSettingOverrides.tsx
@@ -5901,7 +5914,7 @@ msgstr "Werkdagen"
 msgid "Weekends"
 msgstr "Weekenden"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Weekly"
 msgstr ""
 

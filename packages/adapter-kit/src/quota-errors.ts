@@ -8,3 +8,11 @@ export class SubscriptionQuotaDeclinedError extends Error {
     this.name = "SubscriptionQuotaDeclinedError";
   }
 }
+
+/** A model-boundary checkpoint can resume once the native queue wakes this run. */
+export class SubscriptionQuotaWaitError extends Error {
+  constructor(readonly retryAt: string) {
+    super("Waiting for subscription capacity.");
+    this.name = "SubscriptionQuotaWaitError";
+  }
+}

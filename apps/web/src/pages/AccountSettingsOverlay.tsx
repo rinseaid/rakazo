@@ -28,7 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@rakazo/ui-web/components/ui/table";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { useId, useRef, useState, useSyncExternalStore } from "react";
 import { AccountAccess } from "../components/AccountAccess";
 import { SuccessPop } from "../components/ai/primitives";
@@ -482,9 +482,11 @@ export function GeneralSettingsPanels({
 
 export function UsageSettingsPanel({
   usage,
+  providerUsage,
   panelRef,
 }: {
   usage?: UsageSummary | null;
+  providerUsage?: ReactNode;
   panelRef?: RefObject<HTMLDivElement | null>;
 }) {
   const { t, i18n } = useLingui();
@@ -496,6 +498,7 @@ export function UsageSettingsPanel({
   const models = usage?.models ?? [];
   return (
     <div ref={panelRef} tabIndex={-1} data-testid="usage-settings" className="outline-none">
+      {providerUsage}
       {usage ? (
         <dl className="grid grid-cols-3 gap-3">
           {[

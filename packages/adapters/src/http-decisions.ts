@@ -49,6 +49,7 @@ export class HttpDecisionProvider implements DecisionProvider {
     const reservation = await this.options.callObserver?.beforeCall({
       callId,
       runId: context.runId,
+      ...(context.runLease ? { runLease: context.runLease } : {}),
       provider: this.provider,
       modelId: request.model,
       operationKind: "setup",

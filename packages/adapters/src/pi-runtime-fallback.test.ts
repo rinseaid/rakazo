@@ -9,7 +9,7 @@ import type {
 } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import type { AgentRunRequest, AgentRuntimeEvent, ModelCallObserver } from "@rakazo/adapter-kit";
-import { SubscriptionQuotaDeclinedError } from "@rakazo/adapter-kit";
+import { SubscriptionQuotaDeclinedError, SubscriptionQuotaWaitError } from "@rakazo/adapter-kit";
 import type * as Core from "@rakazo/core";
 import { normalizeRunError } from "@rakazo/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -186,12 +186,14 @@ async function run(
   input: AgentRunRequest,
   events: AgentRuntimeEvent[] = [],
   runtime = new PiAgentRuntime(),
+  runLease?: { owner: string; fence: number },
 ) {
   for await (const event of runtime.run(input, {
     operationId: "operation",
     traceId: "trace",
     spaceId: "space",
     userId: "user",
+    runLease,
     signal: new AbortController().signal,
   })) {
     events.push(event);
@@ -2778,4 +2780,101 @@ describe("Pi runtime fallback error classes and mid-run switches", () => {
       backupA.provider,
     ]);
   });
+});
+
+describe("Pi runtime durable quota continuation", () => {
+  it("resumes a saved model boundary in a new runtime without replaying a completed tool", async () => {
+    const input = request();
+    let admissions = 0;
+    let checkpoint: string | undefined;
+    const retryAt = new Date(Date.now() + 60_000).toISOString();
+    input.onCheckpoint = async (capture, executionId) => {
+      if (executionId === "quota-wait") checkpoint = capture();
+    };
+    input.model.callObserver = {
+      beforeCall: async () => {
+        if (++admissions > 1) throw new SubscriptionQuotaDeclinedError("exhausted", retryAt);
+        return "first-call";
+      },
+      afterCall: async () => undefined,
+    };
+    providerState.stream.mockImplementation((target: Model<"openai-completions">) =>
+      stream(
+        target,
+        message(
+          target,
+          [
+            {
+              type: "toolCall",
+              id: "durable-write-once",
+              name: "write_effect",
+              arguments: { value: "saved-result" },
+            },
+          ],
+          "toolUse",
+        ),
+      ),
+    );
+    await expect(run(input)).rejects.toMatchObject({ name: "SubscriptionQuotaWaitError", retryAt });
+    expect(input.executeTool).toHaveBeenCalledOnce();
+    expect(checkpoint).toBeDefined();
+    providerState.stream.mockImplementation(
+      (target: Model<"openai-completions">, context: Context) => {
+        expect(
+          context.messages.some(
+            (entry) => entry.role === "toolResult" && entry.toolCallId === "durable-write-once",
+          ),
+        ).toBe(true);
+        return stream(
+          target,
+          message(target, [{ type: "text", text: "Resumed after quota refresh." }], "stop"),
+        );
+      },
+    );
+    const resumed = {
+      ...input,
+      turnCheckpoint: checkpoint,
+      model: { ...input.model, callObserver: undefined },
+    };
+    const events = await run(resumed, [], new PiAgentRuntime());
+    expect(input.executeTool).toHaveBeenCalledOnce();
+    expect(events).toContainEqual({ type: "done", text: "Resumed after quota refresh." });
+  });
+
+  it("does not dispatch a model when every account declines admission", async () => {
+    const input = request([{ provider: backupA.provider, id: backupA.id, apiKey: "fake-backup" }]);
+    const observer: ModelCallObserver = {
+      beforeCall: async () => {
+        throw new SubscriptionQuotaDeclinedError(
+          "stale",
+          new Date(Date.now() + 60_000).toISOString(),
+        );
+      },
+      afterCall: async () => undefined,
+    };
+    input.model.callObserver = observer;
+    input.resolveFallbackModel = async () => ({
+      provider: backupA.provider,
+      id: backupA.id,
+      apiKey: "fake-backup",
+      callObserver: observer,
+    });
+    await expect(run(input)).rejects.toBeInstanceOf(SubscriptionQuotaWaitError);
+    expect(providerState.stream).not.toHaveBeenCalled();
+    expect(input.executeTool).not.toHaveBeenCalled();
+  });
+});
+
+it("passes the native worker fence to each physical model admission", async () => {
+  const input = request();
+  const beforeCall = vi.fn(async () => "fixture-reservation");
+  input.model.callObserver = { beforeCall, afterCall: async () => undefined };
+  providerState.stream.mockImplementation((target: Model<"openai-completions">) =>
+    stream(target, message(target, [{ type: "text", text: "done" }], "stop")),
+  );
+  const runLease = { owner: "fixture-worker", fence: 7 };
+  await run(input, [], new PiAgentRuntime(), runLease);
+  expect(beforeCall).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ runId: "run", runLease }),
+  );
 });

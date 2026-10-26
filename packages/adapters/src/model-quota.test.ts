@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { ModelQuotaReader, parseClaudeQuota, parseCodexQuota } from "./model-quota.js";
+import {
+  ModelQuotaReader,
+  parseClaudeQuota,
+  parseCodexQuota,
+  parseGoQuota,
+} from "./model-quota.js";
 
 const codex = {
   rate_limit: {
@@ -165,4 +170,45 @@ describe("model quota observations", () => {
     });
     expect((await new ModelQuotaReader(fetcher).read(connection)).view.status).toBe("unavailable");
   });
+});
+
+const go = {
+  usage: {
+    rolling: { status: "ok", percent: 0, resetsAt: "2030-03-17T17:00:00Z" },
+    weekly: { status: "ok", percent: 54, resetsAt: "2030-03-20T12:00:00Z" },
+    monthly: { status: "rate-limited", percent: 100, resetsAt: "2030-04-01T12:00:00Z" },
+  },
+};
+it("reads all Go windows from the exact saved key without claiming a verified account pool", async () => {
+  const fetcher = vi.fn(async () => response(go));
+  const result = await new ModelQuotaReader(fetcher).read({
+    ...connection,
+    provider: "opencode-go",
+    accountId: undefined,
+  });
+  expect(fetcher).toHaveBeenCalledWith(
+    "https://opencode.ai/zen/go/v1/usage",
+    expect.objectContaining({
+      headers: expect.objectContaining({ authorization: "Bearer test-access-token" }),
+      redirect: "error",
+    }),
+  );
+  expect(result.view).toMatchObject({
+    status: "fresh",
+    identityVerified: false,
+    windows: [
+      { id: "five_hour", usedPercent: 0 },
+      { id: "seven_day", usedPercent: 54 },
+      { id: "monthly", usedPercent: 100 },
+    ],
+  });
+  expect(result.poolKey).toBeNull();
+  expect(JSON.stringify(result)).not.toContain("test-access-token");
+});
+it("rejects incomplete and unknown Go windows", () => {
+  expect(() => parseGoQuota({ usage: { ...go.usage, monthly: null } })).toThrow();
+  expect(() =>
+    parseGoQuota({ usage: { ...go.usage, monthly: { ...go.usage.monthly, status: "unknown" } } }),
+  ).toThrow();
+  expect(() => parseGoQuota({ usage: { ...go.usage, extra: go.usage.weekly } })).toThrow();
 });
