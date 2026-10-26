@@ -1833,6 +1833,10 @@ msgstr "MCP-servers laden mislukt"
 msgid "Could not load model settings"
 msgstr "Modelinstellingen laden mislukt"
 
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Could not load routing settings"
+msgstr ""
+
 #: src/pages/RoutineRunHistory.tsx
 msgid "Could not load run history"
 msgstr "Rungeschiedenis laden mislukt"
@@ -1963,6 +1967,10 @@ msgstr "Model opslaan mislukt"
 #: src/pages/shell/use-routine-editor.ts
 msgid "Could not save routine"
 msgstr "Routine opslaan mislukt"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Could not save routing settings"
+msgstr ""
 
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Could not save rule"
@@ -3199,6 +3207,7 @@ msgid "Load web images automatically"
 msgstr "Webafbeeldingen automatisch laden"
 
 #: src/pages/model-settings/connection-quota.tsx
+#: src/pages/model-settings/quota-routing.tsx
 msgid "Loading"
 msgstr ""
 
@@ -4650,6 +4659,10 @@ msgstr "Routines"
 msgid "Routines that run while you're away"
 msgstr "Routines die draaien terwijl je weg bent"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Routing"
+msgstr ""
+
 #: src/components/markdown-copy.tsx
 msgid "Row"
 msgstr "Rij"
@@ -4704,6 +4717,7 @@ msgstr "zaterdag"
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/model-settings/connection-controls.tsx
 #: src/pages/model-settings/providers-section.tsx
+#: src/pages/model-settings/quota-routing.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/shell/bot-panel.tsx
@@ -4727,6 +4741,7 @@ msgstr "Sla de werkruimte op en installeer de huidige software."
 #: src/components/AskCard.tsx
 #: src/components/teach/SkillDraftCard.tsx
 #: src/pages/ExternalConversationSettings.tsx
+#: src/pages/model-settings/quota-routing.tsx
 msgid "Saved"
 msgstr "Opgeslagen"
 
@@ -5059,6 +5074,10 @@ msgstr "Skills komen in de bibliotheek die al je bots delen."
 #: src/pages/shell/computer-release-actions.tsx
 msgid "Skip"
 msgstr "Overslaan"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Skip exhausted accounts"
+msgstr ""
 
 #: src/lib/localized-provider-hint.ts
 msgid "Skip or deploy key"

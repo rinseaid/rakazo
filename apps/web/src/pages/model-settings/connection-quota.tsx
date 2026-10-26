@@ -2,12 +2,15 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import type { ModelQuotaWindow } from "@rakazo/contracts";
 import { Button } from "@rakazo/ui-web";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { useSpaceQueries } from "../../lib/query";
+import { QuotaRouting } from "./quota-routing";
 
 /** Quota stays with its connection; opening settings never changes routing. */
 export function ConnectionQuota({ credentialId }: { credentialId: string }) {
   const { t } = useLingui();
   const queries = useSpaceQueries();
+  const [routing, setRouting] = useState(false);
   const quota = useQuery({
     ...queries.models.quota.queryOptions({ input: { credentialId } }),
     refetchInterval: 60_000,
@@ -56,6 +59,15 @@ export function ConnectionQuota({ credentialId }: { credentialId: string }) {
           </time>
         </p>
       ) : null}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setRouting((value) => !value)}
+        aria-expanded={routing}
+      >
+        <Trans>Routing</Trans>
+      </Button>
+      {routing ? <QuotaRouting credentialId={credentialId} /> : null}
     </section>
   );
 }

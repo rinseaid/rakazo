@@ -1833,6 +1833,10 @@ msgstr "Could not load MCP servers"
 msgid "Could not load model settings"
 msgstr "Could not load model settings"
 
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Could not load routing settings"
+msgstr "Could not load routing settings"
+
 #: src/pages/RoutineRunHistory.tsx
 msgid "Could not load run history"
 msgstr "Could not load run history"
@@ -1963,6 +1967,10 @@ msgstr "Could not save model"
 #: src/pages/shell/use-routine-editor.ts
 msgid "Could not save routine"
 msgstr "Could not save routine"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Could not save routing settings"
+msgstr "Could not save routing settings"
 
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Could not save rule"
@@ -3199,6 +3207,7 @@ msgid "Load web images automatically"
 msgstr "Load web images automatically"
 
 #: src/pages/model-settings/connection-quota.tsx
+#: src/pages/model-settings/quota-routing.tsx
 msgid "Loading"
 msgstr "Loading"
 
@@ -4650,6 +4659,10 @@ msgstr "Routines"
 msgid "Routines that run while you're away"
 msgstr "Routines that run while you're away"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Routing"
+msgstr "Routing"
+
 #: src/components/markdown-copy.tsx
 msgid "Row"
 msgstr "Row"
@@ -4704,6 +4717,7 @@ msgstr "Saturday"
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/model-settings/connection-controls.tsx
 #: src/pages/model-settings/providers-section.tsx
+#: src/pages/model-settings/quota-routing.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/shell/bot-panel.tsx
@@ -4727,6 +4741,7 @@ msgstr "Save the workspace and install current software."
 #: src/components/AskCard.tsx
 #: src/components/teach/SkillDraftCard.tsx
 #: src/pages/ExternalConversationSettings.tsx
+#: src/pages/model-settings/quota-routing.tsx
 msgid "Saved"
 msgstr "Saved"
 
@@ -5059,6 +5074,10 @@ msgstr "Skills join the library all your bots share."
 #: src/pages/shell/computer-release-actions.tsx
 msgid "Skip"
 msgstr "Skip"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Skip exhausted accounts"
+msgstr "Skip exhausted accounts"
 
 #: src/lib/localized-provider-hint.ts
 msgid "Skip or deploy key"

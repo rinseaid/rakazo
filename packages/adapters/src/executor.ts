@@ -409,6 +409,7 @@ import {
   secretPausedToolResult,
   tryCompleteConnectionWithCode,
 } from "./run-secret.js";
+import { subscriptionQuotaObserver } from "./subscription-quota-observer.js";
 import { restoreTurnCheckpoint, unresolvedTurnCheckpointCalls } from "./turn-checkpoint.js";
 
 export { selectRunConnections } from "./connection-context.js";
@@ -10567,7 +10568,11 @@ async function resolveModelKey(...args: Parameters<typeof resolveModelKeyMateria
     throw new UnavailableModelForAuthError(MISSING_MODEL_MESSAGE);
   }
   const callObserver =
-    !credential && billingEnabled ? await hostedModelCreditObserver(deps.prisma, scope) : undefined;
+    !credential && billingEnabled
+      ? await hostedModelCreditObserver(deps.prisma, scope)
+      : credential
+        ? subscriptionQuotaObserver(deps, scope, credential)
+        : undefined;
   return { ...material, apiKey: material.apiKey ?? runtimeKey, callObserver };
 }
 
@@ -10579,6 +10584,7 @@ async function resolveModelKeyMaterial(
     id: string;
     secretId: string;
     provider: string;
+    quotaPolicy?: unknown;
     defaultModel?: string | null;
     supportsImages?: boolean;
   } | null,

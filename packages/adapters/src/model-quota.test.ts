@@ -25,6 +25,21 @@ const response = (body: unknown) =>
   new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 
 describe("model quota observations", () => {
+  it("accepts the weekly usage breakdown without treating it as another allowance", () => {
+    expect(
+      parseClaudeQuota({
+        ...claude,
+        seven_day_breakdown: { rows: [{ key: "model-a", percent: 91 }] },
+        limits: [
+          { kind: "session", scope: null, percent: 0 },
+          { kind: "weekly_all", scope: null, percent: 91 },
+        ],
+      }),
+    ).toHaveLength(2);
+    expect(() =>
+      parseClaudeQuota({ ...claude, limits: [{ kind: "unknown_scope", scope: null, percent: 0 }] }),
+    ).toThrow();
+  });
   it("keeps known zero distinct from unknown and preserves provider resets", () => {
     expect(parseClaudeQuota(claude)).toMatchObject([{ usedPercent: 0 }, { usedPercent: 91 }]);
     expect(parseCodexQuota(codex)).toEqual([
