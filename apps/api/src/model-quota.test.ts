@@ -136,3 +136,31 @@ it("passes the owned compatible endpoint and exact API key without provider-name
   );
   expect(f.refreshExpiredCredential).not.toHaveBeenCalled();
 });
+
+it("usage links never replace the gateway credential used by quota admission", async () => {
+  const f = fixture();
+  f.deps.prisma.userModelCredential.findFirst.mockResolvedValue({
+    id: "connection-a",
+    userId: actor.userId,
+    provider: "openai-compatible",
+    secretId: "secret-a",
+    usageAccounts: [{ usageAccountId: "upstream-connection" }],
+  } as never);
+  f.load.mockResolvedValue(
+    JSON.stringify({
+      kind: "openai_compatible",
+      baseUrl: "https://gateway.example.test/v1",
+      apiKey: "gateway-test-key",
+    }),
+  );
+  await readConnectionQuota(f.ctx, f.reader, actor, "connection-a");
+  expect(f.read).toHaveBeenCalledWith(
+    expect.objectContaining({
+      credentialId: "connection-a",
+      baseUrl: "https://gateway.example.test/v1",
+      accessToken: "gateway-test-key",
+    }),
+    { fresh: true },
+  );
+  expect(f.deps.prisma.secret.findFirst).toHaveBeenCalledTimes(1);
+});

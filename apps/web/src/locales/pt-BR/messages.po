@@ -6105,6 +6105,21 @@ msgstr "Seu provedor de voz está sem crédito."
 msgid "CommandCode"
 msgstr "CommandCode"
 
+msgid "Usage accounts"
+msgstr "Usage accounts"
+
+msgid "Show upstream usage without changing this connection's routing."
+msgstr "Show upstream usage without changing this connection's routing."
+
+msgid "Connect an upstream account to show its usage."
+msgstr "Connect an upstream account to show its usage."
+
+msgid "Could not save usage accounts"
+msgstr "Could not save usage accounts"
+
+msgid "Linked to {gatewayNames}"
+msgstr "Linked to {gatewayNames}"
+
 #: src/lib/user-error.ts
 msgid "Your voice provider key was rejected."
 msgstr "Seu provedor de voz recusou a chave."

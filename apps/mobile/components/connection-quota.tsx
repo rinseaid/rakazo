@@ -10,9 +10,13 @@ import { SettingsGroup, SettingsRow } from "./settings-group";
 export function ConnectionQuota({
   credentialId,
   target,
+  label,
+  readOnly = false,
 }: {
   credentialId: string;
   target: SettingsTarget;
+  label?: string;
+  readOnly?: boolean;
 }) {
   const { t } = useI18n();
   const rpc = useMemo(() => settingsRpc(target), [target]);
@@ -46,7 +50,7 @@ export function ConnectionQuota({
   return (
     <>
       <SettingsGroup
-        label={t("Quota")}
+        label={label ?? t("Quota")}
         footer={
           quota?.observedAt
             ? `${t("Updated")} ${new Date(quota.observedAt).toLocaleString()}`
@@ -84,13 +88,15 @@ export function ConnectionQuota({
           disabled={pending}
           onPress={() => setRefresh((value) => value + 1)}
         />
-        <SettingsRow
-          title={t("Routing")}
-          onPress={() => setRouting((value) => !value)}
-          chevron={routing ? "down" : "right"}
-        />
+        {!readOnly ? (
+          <SettingsRow
+            title={t("Routing")}
+            onPress={() => setRouting((value) => !value)}
+            chevron={routing ? "down" : "right"}
+          />
+        ) : null}
       </SettingsGroup>
-      {routing ? <QuotaRouting credentialId={credentialId} target={target} /> : null}
+      {!readOnly && routing ? <QuotaRouting credentialId={credentialId} target={target} /> : null}
     </>
   );
 }

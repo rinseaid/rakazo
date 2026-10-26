@@ -282,6 +282,9 @@ export const appContract = {
     apply: oc.input(ServerUpdateRequestSchema).output(ServerUpdateRunSchema),
   },
   models: {
+    setUsageAccounts: oc
+      .input(z.object({ credentialId: Id, usageAccountIds: z.array(Id).max(32) }))
+      .output(z.object({ usageAccountIds: z.array(Id) })),
     quota: oc.input(z.object({ credentialId: Id })).output(ModelQuotaSchema),
     quotaPolicy: oc.input(z.object({ credentialId: Id })).output(ModelQuotaPolicySchema),
     setQuotaPolicy: oc

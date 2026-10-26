@@ -53,6 +53,7 @@ import {
 import { assertCompatibleDefaultChange } from "../model-pins.js";
 import { readConnectionQuota } from "../model-quota.js";
 import { connectionQuotaPolicy, updateConnectionQuotaPolicy } from "../model-quota-policy.js";
+import { setConnectionUsageAccounts } from "../model-usage-accounts.js";
 import { withSerializableRetry } from "../serializable-retry.js";
 import type { RouterContext } from "./context.js";
 
@@ -71,6 +72,14 @@ export function modelsRoutes(ctx: RouterContext) {
   } = ctx;
   return {
     models: {
+      setUsageAccounts: authed.models.setUsageAccounts.handler(async ({ context, input }) =>
+        setConnectionUsageAccounts(
+          ctx,
+          context.actor.userId,
+          input.credentialId,
+          input.usageAccountIds,
+        ),
+      ),
       quota: authed.models.quota.handler(
         async ({ context, input }) =>
           (await readConnectionQuota(ctx, quotaReader, context.actor, input.credentialId)).view,
@@ -100,7 +109,10 @@ export function modelsRoutes(ctx: RouterContext) {
         const [rows, main] = await Promise.all([
           deps.prisma.userModelCredential.findMany({
             where: { userId: context.actor.userId },
-            include: { userPreferences: { where: { userId: context.actor.userId } } },
+            include: {
+              userPreferences: { where: { userId: context.actor.userId } },
+              usageAccounts: { select: { usageAccountId: true } },
+            },
             orderBy: newestModelCredentialOrder,
           }),
           resolveMemberMainModel({ prisma: deps.prisma, secretStore: deps.secrets }, context.actor),
@@ -148,6 +160,7 @@ export function modelsRoutes(ctx: RouterContext) {
                 : listed;
               return {
                 ...shown,
+                usageAccountIds: (row.usageAccounts ?? []).map((link) => link.usageAccountId),
                 ...(shown.enabledModelIds
                   ? {
                       enabledModelIds: [

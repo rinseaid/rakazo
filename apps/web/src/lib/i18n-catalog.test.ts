@@ -279,7 +279,15 @@ it("keeps source placeholders and JSX markers in Traditional Chinese translation
 });
 
 it("renders provider Usage labels from compiled catalogs without source fallbacks", () => {
-  const labels = ["Codex", "CommandCode", "Usage not reported by provider"];
+  const labels = [
+    "Codex",
+    "CommandCode",
+    "Usage not reported by provider",
+    "Usage accounts",
+    "Could not save usage accounts",
+    "Show upstream usage without changing this connection's routing.",
+    "Connect an upstream account to show its usage.",
+  ];
   for (const locale of UI_LOCALES) {
     const filename = fileURLToPath(new URL(`../locales/${locale}/messages.po`, import.meta.url));
     const catalog = formatter().parse(readFileSync(filename, "utf8"), {

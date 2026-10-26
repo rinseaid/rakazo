@@ -429,6 +429,8 @@ model UserModelCredential {
   secretId    String
   supportsImages Boolean              @default(false)
   quotaPolicy Json?
+  usageAccounts UserModelUsageAccount[] @relation("GatewayUsageAccounts")
+  usageGateways UserModelUsageAccount[] @relation("UpstreamUsageAccounts")
   createdAt   DateTime               @default(now())
   updatedAt   DateTime               @updatedAt
   preferences SpaceModelPreference[]
@@ -439,6 +441,18 @@ model UserModelCredential {
   @@unique([id, userId])
   @@index([userId, provider, updatedAt])
   @@map("user_model_credentials")
+}
+
+model UserModelUsageAccount {
+  credentialId String
+  usageAccountId String
+  userId String
+  credential UserModelCredential @relation("GatewayUsageAccounts", fields: [credentialId, userId], references: [id, userId], onDelete: Cascade)
+  usageAccount UserModelCredential @relation("UpstreamUsageAccounts", fields: [usageAccountId, userId], references: [id, userId], onDelete: Cascade)
+
+  @@id([credentialId, usageAccountId])
+  @@index([usageAccountId, userId])
+  @@map("user_model_usage_accounts")
 }
 
 model UserVoiceCredential {

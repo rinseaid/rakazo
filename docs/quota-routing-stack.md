@@ -1,6 +1,6 @@
 # Observed subscription routing test stack
 
-This fork layers six commits on upstream main. It keeps native model roles,
+This fork layers seven commits on upstream main. It keeps native model roles,
 ordered fallbacks, account authorization, credential refresh and the run queue.
 There is no gateway service or second credential owner.
 
@@ -12,6 +12,7 @@ There is no gateway service or second credential owner.
 | 4 | Admission before dispatch, disabled by default | No model request on declined admission, ordinary local errors remain fatal |
 | 5 | Skip reason and admitted backup in existing activity stream | Structured runtime events and ordered backup selection |
 | 6 | Saved transcript and native queued retry at a model boundary | New runtime resumes after a completed tool, durable wake time and cancellation fencing |
+| 7 | Explicit gateway Usage-account links to existing owned connections | Tenant isolation, cascade cleanup, concurrent cycle prevention and responsive browser persistence |
 
 ```mermaid
 flowchart TD
@@ -77,6 +78,28 @@ This runs offline tests, package typechecks, disposable PostgreSQL concurrency
 and recovery checks, and the native Usage/menu browser scenario. Browser quota
 screenshots use synthetic account data. No paid inference is required.
 
+## Gateway Usage accounts
+
+Save a gateway as an OpenAI-compatible connection. Connect its upstream accounts
+through the existing provider forms, then open the gateway under Models > Providers.
+Expand Usage accounts, select the upstream connections and Save. Web and Electron
+show each upstream account once in Usage and its menu, labelled with the linked
+gateways. Native mobile exposes the same selector and read-only upstream meters
+in the gateway's connection settings. Account names stay editable in their own
+connection settings.
+
+The links reuse the selected account's encrypted credentials and existing usage
+reader. They never send an upstream token to the gateway, change inference
+credentials, infer upstreams from model names or enable quota admission. They are
+explicit display associations, not proof of which account a gateway dispatched.
+Multiple gateways can share an account without duplicating its meter. Direct
+CommandCode and OpenCode Go URLs still detect usage automatically.
+
+Only direct accounts with a supported usage reader can be linked. Nested links
+and self-links are rejected, and database foreign keys enforce the same owner.
+Deleting an upstream or gateway removes its links automatically. The additive
+join table leaves older API versions and existing model routes unchanged.
+
 ## Current limits
 
 Codex and Claude have account-verified quota readers. OpenCode Go also reads
@@ -129,7 +152,7 @@ changes dependencies, install under the normal dependency policy before
 verification. The helper does not install dependencies, change age guards,
 force-push, publish a PR or merge upstream.
 
-Keep the six feature commits separate. Add fixes to the corresponding layer
+Keep the seven feature commits separate. Add fixes to the corresponding layer
 before publishing a revision. Small hook edits in the native executor, Pi
 runtime, settings and RPC router are protected by behavior tests rather than
 line-number patches. Once tested, publish the new revision explicitly to the

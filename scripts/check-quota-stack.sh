@@ -8,6 +8,8 @@ corepack enable --install-directory "$pinned_bin" pnpm
 export PATH="$pinned_bin:$PATH"
 corepack pnpm exec vitest run \
   packages/core/src/subscription-quota.test.ts \
+  packages/contracts/src/model-usage-accounts.test.ts \
+  apps/api/src/model-usage-accounts.test.ts \
   packages/adapters/src/model-quota.test.ts \
   packages/adapters/src/subscription-quota-observer.test.ts \
   packages/adapters/src/pi-runtime-fallback.test.ts \
@@ -24,6 +26,8 @@ for package in contracts core db adapter-kit adapters api web mobile; do
 done
 if [[ "${1:-}" == "--full" ]]; then
   corepack pnpm exec tsx packages/testkit/src/cli/harness.ts --integration --spec=quota
+  corepack pnpm exec tsx packages/testkit/src/cli/harness.ts --integration --spec=model-usage-accounts
   corepack pnpm exec tsx packages/testkit/src/cli/harness.ts --e2e --spec=model-quota.spec.ts
+  corepack pnpm exec tsx packages/testkit/src/cli/harness.ts --e2e --spec=usage-accounts.spec.ts
 fi
 git diff --check
