@@ -591,6 +591,8 @@ export type AgentRuntimeEvent =
       text: string;
       /** Provider-generated tool status rather than assistant-authored narration. */
       activity?: true;
+      /** Native routing audit, also rendered through the existing activity text. */
+      route?: { action: "skipped" | "selected"; provider: string; model: string; reason?: string };
     }
   | { type: "tool"; name: string; args: Record<string, unknown>; executionId: string }
   | {

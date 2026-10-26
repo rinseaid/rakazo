@@ -303,6 +303,7 @@ export function observedPiStream(
     recordUsage?: (event: Extract<AgentRuntimeEvent, { type: "usage" }>) => void | Promise<void>;
     /** Provider failures only; excludes context, reservations and usage settlement. */
     onProviderError?: (message: AssistantMessage) => void;
+    onAdmitted?: () => void;
     onCapacityDeclined?: (message: AssistantMessage, error: SubscriptionQuotaDeclinedError) => void;
   },
 ) {
@@ -375,6 +376,7 @@ export function observedPiStream(
             })
           : undefined;
         options?.signal?.throwIfAborted();
+        hooks?.onAdmitted?.();
         started = true;
         // Some Pi adapters reject custom fetch outright. Only audited SSE families opt in.
         const collectRawUsage =
