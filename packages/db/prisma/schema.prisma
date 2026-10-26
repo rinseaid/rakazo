@@ -39,6 +39,7 @@ model User {
   members                     Member[]
   invitations                 Invitation[]
   modelCredentials            UserModelCredential[]
+  subscriptionQuotaPools      SubscriptionQuotaPool[]
   voiceCredentials            UserVoiceCredential[]
   secrets                     Secret[]
   mcpServers                  McpServer[]
@@ -406,6 +407,17 @@ model SecurityEvent {
   @@index([ip, createdAt])
   @@index([userId, createdAt])
   @@map("security_events")
+}
+
+model SubscriptionQuotaPool {
+  userId String
+  poolKey String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  state Json
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, poolKey])
+  @@map("subscription_quota_pools")
 }
 
 model UserModelCredential {
