@@ -11,6 +11,8 @@ export interface AdapterContext {
   userId: string;
   botId?: string;
   runId?: string;
+  /** Native worker ownership for fencing physical model admissions. */
+  runLease?: { owner: string; fence: number };
   /** Opaque fence for releasing a graphical screen without tearing down its replacement. */
   screenLeaseId?: string;
   /** Retain a completed run's screen for reuse by this bot. */
@@ -568,6 +570,7 @@ export interface ModelCallObserver {
   beforeCall(call: {
     callId?: string;
     runId?: string;
+    runLease?: AdapterContext["runLease"];
     operationKind?: UsageOperationKind;
     provider: string;
     modelId: string;

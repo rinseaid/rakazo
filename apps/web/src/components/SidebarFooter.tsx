@@ -12,7 +12,6 @@ import {
   BookOpen,
   Download,
   FolderOpen,
-  Gauge,
   LogOut,
   Plug,
   Settings,
@@ -23,6 +22,7 @@ import {
 import { useLayoutEffect, useRef, useState } from "react";
 import { useSidebarUpdate } from "./DesktopUpdates";
 import { IconTooltip } from "./IconTooltip";
+import { UsagePopover } from "./usage/usage-popover";
 
 type Props = {
   mini?: boolean;
@@ -142,14 +142,7 @@ export function SidebarFooter({
                 <Trans>Connect apps</Trans>
               </Button>
             ) : null}
-            <Button
-              variant="ghost"
-              className="h-9 w-full justify-start gap-2.5 font-normal"
-              onClick={onUsage}
-            >
-              <Gauge className="text-muted-foreground" strokeWidth={1.75} />
-              <Trans>Usage</Trans>
-            </Button>
+            <UsagePopover onUsage={onUsage} />
             <a
               className={`${buttonVariants({ variant: "ghost" })} h-9 w-full justify-start gap-2.5 font-normal`}
               href={/Android/i.test(navigator.userAgent) ? ANDROID_APK_URL : IOS_APP_STORE_URL}
