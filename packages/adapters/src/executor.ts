@@ -8348,7 +8348,11 @@ export function createRunExecutor(deps: ExecutorDeps) {
               assistantTurnBreakPending = true;
             } else if (event.type === "progress") {
               toolCallStreak = { key: undefined, count: 0 };
-              if (run.trigger === "routine" || isBackgroundRunTrigger(run.trigger)) continue;
+              if (
+                !event.route &&
+                (run.trigger === "routine" || isBackgroundRunTrigger(run.trigger))
+              )
+                continue;
               // Flush batched text deltas first so an activity line cannot land
               // ahead of text the model streamed before the tool call.
               if (pendingProgress) {
@@ -8372,6 +8376,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 payload: {
                   text: redactSecrets(event.text, runSecrets),
                   ...(event.activity ? { activity: true } : {}),
+                  ...(event.route ? { route: event.route } : {}),
                 },
               });
             } else if (event.type === "ask") {
