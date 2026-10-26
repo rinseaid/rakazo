@@ -309,6 +309,10 @@ msgstr "{provider} 回應超時。請重試。"
 msgid "{remaining} left"
 msgstr "剩餘 {remaining}"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "{remaining}% remaining"
+msgstr ""
+
 #: src/pages/BillingSettingsPanel.tsx
 msgid "{seats, plural, one {# seat} other {# seats}}"
 msgstr "{seats, plural, one {# 個席位} other {# 個席位}}"
@@ -634,6 +638,10 @@ msgstr "允許一次"
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Allow writing"
 msgstr "允許寫入"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Allowance"
+msgstr ""
 
 #: src/components/AskCard.tsx
 msgid "Allowed once"
@@ -3126,6 +3134,10 @@ msgstr "上次檢查 {0}：有變化"
 msgid "Last check {0}: no changes"
 msgstr "上次檢查 {0}：無變化"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Last known usage"
+msgstr ""
+
 #: src/components/DesktopUpdates.tsx
 msgid "Later"
 msgstr "稍後"
@@ -3186,6 +3198,10 @@ msgstr "載入更早的執行紀錄"
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Load web images automatically"
 msgstr "自動載入網路圖片"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Loading"
+msgstr ""
 
 #: src/pages/ActivityList.tsx
 msgid "Loading activity…"
@@ -4218,6 +4234,14 @@ msgstr "Pull request"
 msgid "Queued"
 msgstr "排隊中"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Quota"
+msgstr ""
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Quota unavailable"
+msgstr ""
+
 #: src/components/ModelCredits.tsx
 #: src/pages/Onboarding.tsx
 msgid "Rakazo credits"
@@ -4336,6 +4360,7 @@ msgstr "重新導向 URI"
 #: src/App.tsx
 #: src/components/ErrorBoundary.tsx
 #: src/components/ModelCredits.tsx
+#: src/pages/model-settings/connection-quota.tsx
 #: src/pages/RoutineRunHistory.tsx
 msgid "Refresh"
 msgstr "重新整理"
@@ -4518,9 +4543,17 @@ msgstr "重設電腦？"
 msgid "Reset password"
 msgstr "重設密碼"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Reset unknown"
+msgstr ""
+
 #: src/pages/Auth.tsx
 msgid "Reset your password"
 msgstr "重設你的密碼"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Resets"
+msgstr ""
 
 #: src/components/ComputerMaintenanceActions.tsx
 msgid "Resetting…"
@@ -4867,6 +4900,10 @@ msgstr "伺服器名稱"
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Server URL"
 msgstr "伺服器 URL"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Session"
+msgstr ""
 
 #: src/components/call/CallCard.tsx
 #: src/components/SidebarFooter.tsx
@@ -5650,6 +5687,10 @@ msgstr "更新指令？"
 msgid "Update progress"
 msgstr "更新進度"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Updated"
+msgstr ""
+
 #: src/pages/shell/bot-credentials.tsx
 msgid "Updated {updated}"
 msgstr "更新於 {updated}"
@@ -5841,6 +5882,10 @@ msgstr "工作日"
 #: src/lib/cron.ts
 msgid "Weekends"
 msgstr "週末"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Weekly"
+msgstr ""
 
 #: src/components/SignupSurvey.tsx
 msgid "Welcome to Rakazo"

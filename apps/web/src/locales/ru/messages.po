@@ -308,6 +308,10 @@ msgstr "{provider} не ответил вовремя. Повторите поп
 msgid "{remaining} left"
 msgstr "Осталось: {remaining}"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "{remaining}% remaining"
+msgstr ""
+
 #: src/pages/BillingSettingsPanel.tsx
 msgid "{seats, plural, one {# seat} other {# seats}}"
 msgstr ""
@@ -632,6 +636,10 @@ msgstr "Разрешить один раз"
 
 #: src/pages/memory-providers/SerenitySettingsForm.tsx
 msgid "Allow writing"
+msgstr ""
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Allowance"
 msgstr ""
 
 #: src/components/AskCard.tsx
@@ -3125,6 +3133,10 @@ msgstr "Последняя проверка {0}: есть изменения"
 msgid "Last check {0}: no changes"
 msgstr "Последняя проверка {0}: без изменений"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Last known usage"
+msgstr ""
+
 #: src/components/DesktopUpdates.tsx
 msgid "Later"
 msgstr "Позже"
@@ -3185,6 +3197,10 @@ msgstr "Загрузить более ранние запуски"
 #: src/pages/AccountSettingsOverlay.tsx
 msgid "Load web images automatically"
 msgstr "Автоматически загружать изображения из интернета"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Loading"
+msgstr ""
 
 #: src/pages/ActivityList.tsx
 msgid "Loading activity…"
@@ -4217,6 +4233,14 @@ msgstr "Запрос на слияние"
 msgid "Queued"
 msgstr "В очереди"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Quota"
+msgstr ""
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Quota unavailable"
+msgstr ""
+
 #: src/components/ModelCredits.tsx
 #: src/pages/Onboarding.tsx
 msgid "Rakazo credits"
@@ -4335,6 +4359,7 @@ msgstr "URI перенаправления"
 #: src/App.tsx
 #: src/components/ErrorBoundary.tsx
 #: src/components/ModelCredits.tsx
+#: src/pages/model-settings/connection-quota.tsx
 #: src/pages/RoutineRunHistory.tsx
 msgid "Refresh"
 msgstr "Обновить"
@@ -4517,9 +4542,17 @@ msgstr "Сбросить компьютер?"
 msgid "Reset password"
 msgstr "Сбросить пароль"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Reset unknown"
+msgstr ""
+
 #: src/pages/Auth.tsx
 msgid "Reset your password"
 msgstr "Сбросить пароль"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Resets"
+msgstr ""
 
 #: src/components/ComputerMaintenanceActions.tsx
 msgid "Resetting…"
@@ -4866,6 +4899,10 @@ msgstr "Имя сервера"
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Server URL"
 msgstr "URL-адрес сервера"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Session"
+msgstr ""
 
 #: src/components/call/CallCard.tsx
 #: src/components/SidebarFooter.tsx
@@ -5649,6 +5686,10 @@ msgstr "Обновить инструкции?"
 msgid "Update progress"
 msgstr "Ход обновления"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Updated"
+msgstr ""
+
 #: src/pages/shell/bot-credentials.tsx
 msgid "Updated {updated}"
 msgstr ""
@@ -5840,6 +5881,10 @@ msgstr "Будни"
 #: src/lib/cron.ts
 msgid "Weekends"
 msgstr "По выходным"
+
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Weekly"
+msgstr ""
 
 #: src/components/SignupSurvey.tsx
 msgid "Welcome to Rakazo"
