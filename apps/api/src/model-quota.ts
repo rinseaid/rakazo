@@ -22,7 +22,9 @@ export async function readConnectionQuota(
   if (secret) {
     try {
       const stored = parseModelSecret(await ctx.deps.secrets.load(secret.ciphertext, secret.id));
-      if (stored.kind === "oauth") {
+      if (row.provider === "opencode-go" && stored.kind === "api_key") {
+        accessToken = stored.key;
+      } else if (stored.kind === "oauth") {
         if (stored.credential.expires > Date.now() + 30_000) {
           accessToken = stored.credential.access;
           accountId = oauthCredentialAccountId(stored.credential);

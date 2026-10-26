@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { i18n } from "@lingui/core";
+import { createCompiledCatalog } from "@lingui/cli/api";
+import { i18n, setupI18n } from "@lingui/core";
 import { formatter } from "@lingui/format-po";
 import { RUN_ERROR_LIMIT_MESSAGES } from "@rakazo/core";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -274,5 +275,37 @@ it("keeps source placeholders and JSX markers in Traditional Chinese translation
     const translation = translated[id]?.translation;
     if (!translation?.trim()) continue;
     expect(markers(translation), message).toEqual(markers(message));
+  }
+});
+
+it("renders provider Usage labels from compiled catalogs without source fallbacks", () => {
+  const labels = ["Codex", "Usage not reported by provider"];
+  for (const locale of UI_LOCALES) {
+    const filename = fileURLToPath(new URL(`../locales/${locale}/messages.po`, import.meta.url));
+    const catalog = formatter().parse(readFileSync(filename, "utf8"), {
+      locale,
+      sourceLocale: "en",
+      filename,
+    });
+    const translations = labels.map((label) => {
+      const entry = Object.entries(catalog).find(([, value]) => value.message === label);
+      expect(entry, `${locale}: ${label}`).toBeDefined();
+      const [id, value] = entry!;
+      expect(value.translation, `${locale}: ${label}`).toBeTruthy();
+      return [id, value.translation!] as const;
+    });
+    const compiled = createCompiledCatalog(locale, Object.fromEntries(translations), {
+      namespace: "json",
+      strict: true,
+    });
+    expect(compiled.errors, locale).toEqual([]);
+    const runtime = setupI18n({
+      locale,
+      messages: { [locale]: JSON.parse(compiled.source).messages },
+    });
+    for (const [id, translation] of translations) {
+      expect(runtime._({ id }), `${locale}: ${id}`).toBe(translation);
+      expect(runtime._({ id }), `${locale}: ${id}`).not.toBe(id);
+    }
   }
 });

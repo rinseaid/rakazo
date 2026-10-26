@@ -65,7 +65,9 @@ export function ConnectionQuota({
                 ? t("Session")
                 : window.id === "seven_day"
                   ? t("Weekly")
-                  : t("Allowance")
+                  : window.id === "monthly"
+                    ? t("Monthly")
+                    : t("Allowance")
             }
             value={t("{remaining}% remaining", {
               remaining: Math.round((100 - window.usedPercent) * 10) / 10,

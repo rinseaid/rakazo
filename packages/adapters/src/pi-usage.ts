@@ -293,6 +293,7 @@ export function observedPiStream(
     agentId?: string;
     userId?: string;
     runId?: string;
+    runLease?: { owner: string; fence: number };
   } = {
     operationKind: "answer",
   },
@@ -361,6 +362,7 @@ export function observedPiStream(
           ? await observer.beforeCall({
               callId,
               runId: attribution.runId,
+              ...(attribution.runLease ? { runLease: attribution.runLease } : {}),
               operationKind: attribution.operationKind,
               provider: model.provider,
               modelId: model.id,

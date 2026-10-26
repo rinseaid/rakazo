@@ -308,7 +308,7 @@ msgstr "{provider} tardó demasiado en responder. Vuelve a intentarlo."
 msgid "{remaining} left"
 msgstr "Quedan {remaining}"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "{remaining}% remaining"
 msgstr ""
 
@@ -638,7 +638,7 @@ msgstr "Permitir una vez"
 msgid "Allow writing"
 msgstr ""
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Allowance"
 msgstr ""
 
@@ -1337,6 +1337,10 @@ msgctxt "email sign-in"
 msgid "Code"
 msgstr "Código"
 
+#: src/lib/localized-provider-hint.ts
+msgid "Codex"
+msgstr "Codex"
+
 #. placeholder {0}: headerName(group)
 #: src/pages/shell/sidebar-roster.tsx
 msgid "Collapse {0}"
@@ -1861,6 +1865,10 @@ msgstr "No se pudo cargar este chat."
 #: src/components/ArtifactFileCard.tsx
 msgid "Could not load this file."
 msgstr "No se pudo cargar este archivo."
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Could not load usage"
+msgstr ""
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Could not load voice settings"
@@ -3141,7 +3149,7 @@ msgstr "Última comprobación {0}: cambios"
 msgid "Last check {0}: no changes"
 msgstr "Última comprobación {0}: sin cambios"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Last known usage"
 msgstr ""
 
@@ -3206,7 +3214,8 @@ msgstr "Cargar ejecuciones anteriores"
 msgid "Load web images automatically"
 msgstr "Cargar imágenes web automáticamente"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
+#: src/components/usage/provider-quota-stack.tsx
 #: src/pages/model-settings/quota-routing.tsx
 msgid "Loading"
 msgstr ""
@@ -3747,6 +3756,10 @@ msgstr ""
 msgid "No bots match"
 msgstr ""
 
+#: src/components/usage/provider-quota-stack.tsx
+msgid "No connected providers"
+msgstr ""
+
 #: src/components/AskCard.tsx
 msgid "No longer active"
 msgstr "Ya no está activo"
@@ -4242,11 +4255,11 @@ msgstr "Solicitud de incorporación"
 msgid "Queued"
 msgstr "En cola"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Quota"
 msgstr ""
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Quota unavailable"
 msgstr ""
 
@@ -4368,7 +4381,7 @@ msgstr "URI de redirección"
 #: src/App.tsx
 #: src/components/ErrorBoundary.tsx
 #: src/components/ModelCredits.tsx
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 #: src/pages/RoutineRunHistory.tsx
 msgid "Refresh"
 msgstr "Actualizar"
@@ -4551,7 +4564,7 @@ msgstr "¿Restablecer computadora?"
 msgid "Reset password"
 msgstr "Restablecer contraseña"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Reset unknown"
 msgstr ""
 
@@ -4559,7 +4572,7 @@ msgstr ""
 msgid "Reset your password"
 msgstr "Restablece tu contraseña"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Resets"
 msgstr ""
 
@@ -4659,7 +4672,7 @@ msgstr "Rutinas"
 msgid "Routines that run while you're away"
 msgstr ""
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/pages/ModelSettingsOverlay.tsx
 msgid "Routing"
 msgstr ""
 
@@ -4915,7 +4928,7 @@ msgstr "Nombre del servidor"
 msgid "Server URL"
 msgstr "URL del servidor"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Session"
 msgstr ""
 
@@ -5705,7 +5718,7 @@ msgstr "¿Actualizar instrucciones?"
 msgid "Update progress"
 msgstr ""
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Updated"
 msgstr ""
 
@@ -5742,10 +5755,14 @@ msgstr "Subir"
 msgid "Urgent"
 msgstr ""
 
-#: src/components/SidebarFooter.tsx
+#: src/components/usage/usage-popover.tsx
 #: src/pages/SettingsOverlay.tsx
 msgid "Usage"
 msgstr "Uso"
+
+#: src/components/usage/connection-quota.tsx
+msgid "Usage not reported by provider"
+msgstr "El proveedor no informa del uso"
 
 #. Switches the saved timezone to this device's, e.g. 'Use Pacific/Auckland'
 #. placeholder {0}: deviceTimezone.replaceAll("_", " ")
@@ -5848,6 +5865,10 @@ msgstr ""
 msgid "View chat"
 msgstr "Ver chat"
 
+#: src/components/usage/usage-popover.tsx
+msgid "View usage"
+msgstr ""
+
 #: src/pages/SettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx
 #: src/pages/SpaceSettingOverrides.tsx
@@ -5901,7 +5922,7 @@ msgstr "Días laborables"
 msgid "Weekends"
 msgstr "Fines de semana"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Weekly"
 msgstr ""
 
