@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { ModelQuotaReader, parseClaudeQuota, parseCodexQuota } from "./model-quota.js";
+import {
+  ModelQuotaReader,
+  parseClaudeQuota,
+  parseCodexQuota,
+  parseCommandCodeQuota,
+  parseGoQuota,
+} from "./model-quota.js";
 
 const codex = {
   rate_limit: {
@@ -165,4 +171,166 @@ describe("model quota observations", () => {
     });
     expect((await new ModelQuotaReader(fetcher).read(connection)).view.status).toBe("unavailable");
   });
+});
+
+const go = {
+  usage: {
+    rolling: { status: "ok", percent: 0, resetsAt: "2030-03-17T17:00:00Z" },
+    weekly: { status: "ok", percent: 54, resetsAt: "2030-03-20T12:00:00Z" },
+    monthly: { status: "rate-limited", percent: 100, resetsAt: "2030-04-01T12:00:00Z" },
+  },
+};
+it("reads all Go windows from the exact saved key without claiming a verified account pool", async () => {
+  const fetcher = vi.fn(async () => response(go));
+  const result = await new ModelQuotaReader(fetcher).read({
+    ...connection,
+    provider: "opencode-go",
+    accountId: undefined,
+  });
+  expect(fetcher).toHaveBeenCalledWith(
+    "https://opencode.ai/zen/go/v1/usage",
+    expect.objectContaining({
+      headers: expect.objectContaining({ authorization: "Bearer test-access-token" }),
+      redirect: "error",
+    }),
+  );
+  expect(result.view).toMatchObject({
+    status: "fresh",
+    identityVerified: false,
+    windows: [
+      { id: "five_hour", usedPercent: 0 },
+      { id: "seven_day", usedPercent: 54 },
+      { id: "monthly", usedPercent: 100 },
+    ],
+  });
+  expect(result.poolKey).toBeNull();
+  expect(JSON.stringify(result)).not.toContain("test-access-token");
+});
+it("rejects incomplete and unknown Go windows", () => {
+  expect(() => parseGoQuota({ usage: { ...go.usage, monthly: null } })).toThrow();
+  expect(() =>
+    parseGoQuota({ usage: { ...go.usage, monthly: { ...go.usage.monthly, status: "unknown" } } }),
+  ).toThrow();
+  expect(() => parseGoQuota({ usage: { ...go.usage, extra: go.usage.weekly } })).toThrow();
+});
+
+const commandCodeCredits = {
+  credits: { monthlyCredits: 2, purchasedCredits: 500 },
+  windowLimits: {
+    limited: true,
+    fiveHour: { used: 0, cap: 14, resetAt: 0 },
+    weekly: { used: 35.01, cap: 35, resetAt: 1_900_000_000_000 },
+  },
+};
+const commandCodeSubscription = {
+  data: { status: "active", planId: "individual-goat", currentPeriodEnd: "2030-04-01T12:00:00Z" },
+};
+it("reads CommandCode's three subscription windows with the exact compatible key", async () => {
+  const fetcher = vi.fn(async (url: string | URL | Request) =>
+    response(
+      String(url).includes("/whoami")
+        ? { org: { id: "test org" } }
+        : String(url).includes("/credits")
+          ? commandCodeCredits
+          : commandCodeSubscription,
+    ),
+  );
+  const result = await new ModelQuotaReader(fetcher).read({
+    ...connection,
+    provider: "openai-compatible",
+    baseUrl: "https://api.commandcode.ai/provider/v1",
+    accountId: undefined,
+  });
+  expect(fetcher.mock.calls.map((call) => String(call[0]))).toEqual([
+    "https://api.commandcode.ai/alpha/whoami?limits=1",
+    "https://api.commandcode.ai/alpha/billing/credits?orgId=test+org",
+    "https://api.commandcode.ai/alpha/billing/subscriptions?orgId=test+org",
+  ]);
+  expect(result.view).toMatchObject({
+    status: "fresh",
+    identityVerified: false,
+    windows: [
+      { id: "five_hour", usedPercent: 0, resetsAt: null },
+      { id: "seven_day", usedPercent: 100, resetsAt: "2030-03-17T17:46:40.000Z" },
+      { id: "monthly", usedPercent: (100 * 68) / 70, resetsAt: "2030-04-01T12:00:00.000Z" },
+    ],
+  });
+  expect(result.poolKey).toBeNull();
+  expect(JSON.stringify(result)).not.toContain("test org");
+  expect(JSON.stringify(result)).not.toContain("test-access-token");
+});
+it("does not send arbitrary compatible credentials to CommandCode", async () => {
+  const fetcher = vi.fn();
+  for (const baseUrl of [
+    undefined,
+    "http://api.commandcode.ai/provider/v1",
+    "https://api.commandcode.ai.evil.test/provider/v1",
+    "https://api.commandcode.ai/provider/v1?key=other",
+    "https://other.example.test/v1",
+  ]) {
+    const result = await new ModelQuotaReader(fetcher).read({
+      ...connection,
+      provider: "openai-compatible",
+      baseUrl,
+    });
+    expect(result.view.status).toBe("unsupported");
+  }
+  expect(fetcher).not.toHaveBeenCalled();
+});
+it("rejects incomplete CommandCode billing and never counts purchased credits as subscription headroom", async () => {
+  for (const credits of [
+    null,
+    {},
+    { ...commandCodeCredits, credits: { monthlyCredits: -1 } },
+    { ...commandCodeCredits, credits: { monthlyCredits: 71 } },
+    {
+      ...commandCodeCredits,
+      windowLimits: {
+        ...commandCodeCredits.windowLimits,
+        weekly: { used: 1, cap: 35, resetAt: 0 },
+      },
+    },
+  ]) {
+    expect(() => parseCommandCodeQuota(credits, commandCodeSubscription)).toThrow();
+  }
+  expect(() =>
+    parseCommandCodeQuota(commandCodeCredits, {
+      data: { ...commandCodeSubscription.data, status: "inactive" },
+    }),
+  ).toThrow();
+});
+it("reads individual CommandCode usage without adding an organization and keeps failures private", async () => {
+  let fail = false;
+  const fetcher = vi.fn(async (url: string | URL | Request, options?: RequestInit) => {
+    expect(options?.redirect).toBe("error");
+    expect(options?.signal).toBeInstanceOf(AbortSignal);
+    expect(options?.headers).toEqual({
+      authorization: "Bearer test-access-token",
+      accept: "application/json",
+    });
+    if (fail) return new Response("private upstream diagnostic", { status: 401 });
+    return response(
+      String(url).includes("/whoami")
+        ? {}
+        : String(url).endsWith("/credits")
+          ? commandCodeCredits
+          : commandCodeSubscription,
+    );
+  });
+  const reader = new ModelQuotaReader(fetcher);
+  const goat = {
+    ...connection,
+    provider: "openai-compatible",
+    baseUrl: "https://api.commandcode.ai/provider/v1",
+  };
+  const first = await reader.read(goat);
+  expect(first.view.status).toBe("fresh");
+  expect(fetcher.mock.calls.map((call) => String(call[0]))).toContain(
+    "https://api.commandcode.ai/alpha/billing/credits",
+  );
+  fail = true;
+  const failed = await reader.read(goat, { fresh: true });
+  expect(failed.view.status).toBe("stale");
+  expect(failed.view.observedAt).toBe(first.view.observedAt);
+  expect(JSON.stringify(failed)).not.toContain("private upstream diagnostic");
 });

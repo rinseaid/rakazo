@@ -308,7 +308,7 @@ msgstr "{provider} לא הגיב בזמן. אפשר לנסות שוב."
 msgid "{remaining} left"
 msgstr "נותרו {remaining}"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "{remaining}% remaining"
 msgstr ""
 
@@ -638,7 +638,7 @@ msgstr "אישור חד-פעמי"
 msgid "Allow writing"
 msgstr "לאפשר כתיבה"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Allowance"
 msgstr ""
 
@@ -1337,6 +1337,10 @@ msgctxt "email sign-in"
 msgid "Code"
 msgstr "קוד"
 
+#: src/lib/localized-provider-hint.ts
+msgid "Codex"
+msgstr "Codex"
+
 #. placeholder {0}: headerName(group)
 #: src/pages/shell/sidebar-roster.tsx
 msgid "Collapse {0}"
@@ -1861,6 +1865,10 @@ msgstr "לא ניתן לטעון את הצ׳אט הזה."
 #: src/components/ArtifactFileCard.tsx
 msgid "Could not load this file."
 msgstr "לא ניתן לטעון את הקובץ הזה."
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Could not load usage"
+msgstr ""
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Could not load voice settings"
@@ -3141,7 +3149,7 @@ msgstr ""
 msgid "Last check {0}: no changes"
 msgstr ""
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Last known usage"
 msgstr ""
 
@@ -3206,7 +3214,8 @@ msgstr "טעינת הרצות ישנות יותר"
 msgid "Load web images automatically"
 msgstr "טעינה אוטומטית של תמונות מהרשת"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
+#: src/components/usage/provider-quota-stack.tsx
 #: src/pages/model-settings/quota-routing.tsx
 msgid "Loading"
 msgstr ""
@@ -3747,6 +3756,10 @@ msgstr "אין בוטים"
 msgid "No bots match"
 msgstr "אין בוטים תואמים"
 
+#: src/components/usage/provider-quota-stack.tsx
+msgid "No connected providers"
+msgstr ""
+
 #: src/components/AskCard.tsx
 msgid "No longer active"
 msgstr "כבר לא פעיל"
@@ -4242,11 +4255,11 @@ msgstr "Pull request"
 msgid "Queued"
 msgstr "בתור"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Quota"
 msgstr ""
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Quota unavailable"
 msgstr ""
 
@@ -4368,7 +4381,7 @@ msgstr "כתובת הפניה (Redirect URI)"
 #: src/App.tsx
 #: src/components/ErrorBoundary.tsx
 #: src/components/ModelCredits.tsx
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 #: src/pages/RoutineRunHistory.tsx
 msgid "Refresh"
 msgstr "רענון"
@@ -4551,7 +4564,7 @@ msgstr "לאפס את המחשב?"
 msgid "Reset password"
 msgstr "איפוס סיסמה"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Reset unknown"
 msgstr ""
 
@@ -4559,7 +4572,7 @@ msgstr ""
 msgid "Reset your password"
 msgstr "איפוס הסיסמה"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Resets"
 msgstr ""
 
@@ -4659,7 +4672,7 @@ msgstr "רוטינות"
 msgid "Routines that run while you're away"
 msgstr "רוטינות שרצות גם כשלא נמצאים"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/pages/ModelSettingsOverlay.tsx
 msgid "Routing"
 msgstr ""
 
@@ -4915,7 +4928,7 @@ msgstr "שם השרת"
 msgid "Server URL"
 msgstr "URL של השרת"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Session"
 msgstr ""
 
@@ -5705,7 +5718,7 @@ msgstr "לעדכן את ההוראות?"
 msgid "Update progress"
 msgstr "התקדמות העדכון"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Updated"
 msgstr ""
 
@@ -5742,10 +5755,14 @@ msgstr "העלאה"
 msgid "Urgent"
 msgstr "דחוף"
 
-#: src/components/SidebarFooter.tsx
+#: src/components/usage/usage-popover.tsx
 #: src/pages/SettingsOverlay.tsx
 msgid "Usage"
 msgstr "שימוש"
+
+#: src/components/usage/connection-quota.tsx
+msgid "Usage not reported by provider"
+msgstr "הספק לא מדווח על השימוש"
 
 #. Switches the saved timezone to this device's, e.g. 'Use Pacific/Auckland'
 #. placeholder {0}: deviceTimezone.replaceAll("_", " ")
@@ -5848,6 +5865,10 @@ msgstr "גרסה"
 msgid "View chat"
 msgstr "צפייה בצ׳אט"
 
+#: src/components/usage/usage-popover.tsx
+msgid "View usage"
+msgstr ""
+
 #: src/pages/SettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx
 #: src/pages/SpaceSettingOverrides.tsx
@@ -5901,7 +5922,7 @@ msgstr "שני עד שישי"
 msgid "Weekends"
 msgstr "סופי שבוע"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Weekly"
 msgstr ""
 
