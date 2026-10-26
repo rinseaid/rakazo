@@ -102,6 +102,7 @@ export * from "./messaging-team-chat-emulator.js";
 export * from "./model-connect.js";
 export { hostedModelCreditObserver } from "./model-credit-observer.js";
 export * from "./model-credit-reconciler.js";
+export * from "./model-quota.js";
 export * from "./model-roles.js";
 export * from "./model-selection.js";
 export * from "./model-vision.js";
