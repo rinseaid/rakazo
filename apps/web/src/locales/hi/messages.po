@@ -1833,6 +1833,10 @@ msgstr "MCP सर्वर लोड नहीं हो सके"
 msgid "Could not load model settings"
 msgstr "मॉडल सेटिंग्स लोड नहीं हो सकीं"
 
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Could not load routing settings"
+msgstr ""
+
 #: src/pages/RoutineRunHistory.tsx
 msgid "Could not load run history"
 msgstr "रन का इतिहास लोड नहीं हो सका"
@@ -1963,6 +1967,10 @@ msgstr "मॉडल सहेजा नहीं जा सका"
 #: src/pages/shell/use-routine-editor.ts
 msgid "Could not save routine"
 msgstr "रूटीन सहेजा नहीं जा सका"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Could not save routing settings"
+msgstr ""
 
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Could not save rule"
@@ -2560,6 +2568,10 @@ msgstr ""
 #: src/components/McpServerHealthLine.tsx
 msgid "Error details"
 msgstr "त्रुटि का विवरण"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Estimates remain reserved until the applicable window resets."
+msgstr ""
 
 #: src/lib/cron.ts
 #: src/pages/ExternalConversationSettings.tsx
@@ -3199,6 +3211,7 @@ msgid "Load web images automatically"
 msgstr "वेब छवियाँ अपने-आप लोड करें"
 
 #: src/pages/model-settings/connection-quota.tsx
+#: src/pages/model-settings/quota-routing.tsx
 msgid "Loading"
 msgstr ""
 
@@ -4241,6 +4254,10 @@ msgstr ""
 msgid "Quota unavailable"
 msgstr ""
 
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Quota-aware routing"
+msgstr ""
+
 #: src/components/ModelCredits.tsx
 #: src/pages/Onboarding.tsx
 msgid "Rakazo credits"
@@ -4513,12 +4530,20 @@ msgstr ""
 msgid "Request a new code"
 msgstr "नया कोड मँगाएँ"
 
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Request estimate (%)"
+msgstr ""
+
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Requests"
 msgstr ""
 
 #: src/pages/shell/message-cards.tsx
 msgid "Research & writing"
+msgstr ""
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Reserve (%)"
 msgstr ""
 
 #: src/components/ComputerMaintenanceActions.tsx
@@ -4650,6 +4675,10 @@ msgstr "रूटीन्स"
 msgid "Routines that run while you're away"
 msgstr ""
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Routing"
+msgstr ""
+
 #: src/components/markdown-copy.tsx
 msgid "Row"
 msgstr "पंक्ति"
@@ -4704,6 +4733,7 @@ msgstr "शनिवार"
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/model-settings/connection-controls.tsx
 #: src/pages/model-settings/providers-section.tsx
+#: src/pages/model-settings/quota-routing.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/shell/bot-panel.tsx
@@ -4727,6 +4757,7 @@ msgstr "कार्यक्षेत्र सहेजें और नवी
 #: src/components/AskCard.tsx
 #: src/components/teach/SkillDraftCard.tsx
 #: src/pages/ExternalConversationSettings.tsx
+#: src/pages/model-settings/quota-routing.tsx
 msgid "Saved"
 msgstr "सहेजा गया"
 
@@ -4902,6 +4933,10 @@ msgstr "सर्वर URL"
 
 #: src/pages/model-settings/connection-quota.tsx
 msgid "Session"
+msgstr ""
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Set a request estimate before enabling quota routing"
 msgstr ""
 
 #: src/components/call/CallCard.tsx
@@ -5620,6 +5655,10 @@ msgstr "अपना उत्तर लिखें"
 #: src/pages/Shell.tsx
 msgid "Unassigned"
 msgstr "असाइन नहीं किया गया"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Uncertainty (%)"
+msgstr ""
 
 #: src/components/AskCard.tsx
 msgid "Undo"

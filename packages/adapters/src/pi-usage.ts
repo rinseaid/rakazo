@@ -15,6 +15,7 @@ import type {
   ModelCallObserver,
   UsageOperationKind,
 } from "@rakazo/adapter-kit";
+import { SubscriptionQuotaDeclinedError } from "@rakazo/adapter-kit";
 import { Agent } from "undici";
 import { withChatCompletionsCompatibility } from "./chat-completions-compat.js";
 import type { ContextBudget } from "./context-selection.js";
@@ -302,6 +303,7 @@ export function observedPiStream(
     recordUsage?: (event: Extract<AgentRuntimeEvent, { type: "usage" }>) => void | Promise<void>;
     /** Provider failures only; excludes context, reservations and usage settlement. */
     onProviderError?: (message: AssistantMessage) => void;
+    onCapacityDeclined?: (message: AssistantMessage, error: SubscriptionQuotaDeclinedError) => void;
   },
 ) {
   const stream = createAssistantMessageEventStream();
@@ -524,6 +526,8 @@ export function observedPiStream(
           timestamp: Date.now(),
         };
         if (providerThrew && terminalError === providerError) hooks?.onProviderError?.(message);
+        if (terminalError instanceof SubscriptionQuotaDeclinedError)
+          hooks?.onCapacityDeclined?.(message, terminalError);
         stream.push({ type: "error", reason: "error", error: message });
         stream.end(message);
       }

@@ -125,7 +125,7 @@ import {
   IntegrationSetupStateSchema,
 } from "./integration-settings.js";
 import { ModelHeadersSchema } from "./model-headers.js";
-import { ModelQuotaSchema } from "./model-quota.js";
+import { ModelQuotaPolicySchema, ModelQuotaSchema } from "./model-quota.js";
 import { ModelRoleSchema, ModelRoleUpdateSchema, ModelRoleViewSchema } from "./model-roles.js";
 import { MessageReactionSchema } from "./reactions.js";
 import { RoutineWatchSchema } from "./routine-watch.js";
@@ -283,6 +283,10 @@ export const appContract = {
   },
   models: {
     quota: oc.input(z.object({ credentialId: Id })).output(ModelQuotaSchema),
+    quotaPolicy: oc.input(z.object({ credentialId: Id })).output(ModelQuotaPolicySchema),
+    setQuotaPolicy: oc
+      .input(z.object({ credentialId: Id, policy: ModelQuotaPolicySchema }))
+      .output(ModelQuotaPolicySchema),
     forRole: oc
       .input(z.object({ role: ModelRoleSchema, expectedUserId: Id.optional() }))
       .output(z.array(ModelCatalogEntrySchema)),

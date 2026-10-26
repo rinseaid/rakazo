@@ -1833,6 +1833,10 @@ msgstr "Could not load MCP servers"
 msgid "Could not load model settings"
 msgstr "Could not load model settings"
 
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Could not load routing settings"
+msgstr "Could not load routing settings"
+
 #: src/pages/RoutineRunHistory.tsx
 msgid "Could not load run history"
 msgstr "Could not load run history"
@@ -1963,6 +1967,10 @@ msgstr "Could not save model"
 #: src/pages/shell/use-routine-editor.ts
 msgid "Could not save routine"
 msgstr "Could not save routine"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Could not save routing settings"
+msgstr "Could not save routing settings"
 
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Could not save rule"
@@ -2560,6 +2568,10 @@ msgstr "Error"
 #: src/components/McpServerHealthLine.tsx
 msgid "Error details"
 msgstr "Error details"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Estimates remain reserved until the applicable window resets."
+msgstr "Estimates remain reserved until the applicable window resets."
 
 #: src/lib/cron.ts
 #: src/pages/ExternalConversationSettings.tsx
@@ -3199,6 +3211,7 @@ msgid "Load web images automatically"
 msgstr "Load web images automatically"
 
 #: src/pages/model-settings/connection-quota.tsx
+#: src/pages/model-settings/quota-routing.tsx
 msgid "Loading"
 msgstr "Loading"
 
@@ -4241,6 +4254,10 @@ msgstr "Quota"
 msgid "Quota unavailable"
 msgstr "Quota unavailable"
 
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Quota-aware routing"
+msgstr "Quota-aware routing"
+
 #: src/components/ModelCredits.tsx
 #: src/pages/Onboarding.tsx
 msgid "Rakazo credits"
@@ -4513,6 +4530,10 @@ msgstr "Replying to {0}"
 msgid "Request a new code"
 msgstr "Request a new code"
 
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Request estimate (%)"
+msgstr "Request estimate (%)"
+
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Requests"
 msgstr "Requests"
@@ -4520,6 +4541,10 @@ msgstr "Requests"
 #: src/pages/shell/message-cards.tsx
 msgid "Research & writing"
 msgstr "Research & writing"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Reserve (%)"
+msgstr "Reserve (%)"
 
 #: src/components/ComputerMaintenanceActions.tsx
 #: src/pages/shell/avatar-studio-popover.tsx
@@ -4650,6 +4675,10 @@ msgstr "Routines"
 msgid "Routines that run while you're away"
 msgstr "Routines that run while you're away"
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Routing"
+msgstr "Routing"
+
 #: src/components/markdown-copy.tsx
 msgid "Row"
 msgstr "Row"
@@ -4704,6 +4733,7 @@ msgstr "Saturday"
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/model-settings/connection-controls.tsx
 #: src/pages/model-settings/providers-section.tsx
+#: src/pages/model-settings/quota-routing.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/shell/bot-panel.tsx
@@ -4727,6 +4757,7 @@ msgstr "Save the workspace and install current software."
 #: src/components/AskCard.tsx
 #: src/components/teach/SkillDraftCard.tsx
 #: src/pages/ExternalConversationSettings.tsx
+#: src/pages/model-settings/quota-routing.tsx
 msgid "Saved"
 msgstr "Saved"
 
@@ -4903,6 +4934,10 @@ msgstr "Server URL"
 #: src/pages/model-settings/connection-quota.tsx
 msgid "Session"
 msgstr "Session"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Set a request estimate before enabling quota routing"
+msgstr "Set a request estimate before enabling quota routing"
 
 #: src/components/call/CallCard.tsx
 #: src/components/SidebarFooter.tsx
@@ -5620,6 +5655,10 @@ msgstr "Type your answer"
 #: src/pages/Shell.tsx
 msgid "Unassigned"
 msgstr "Unassigned"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Uncertainty (%)"
+msgstr "Uncertainty (%)"
 
 #: src/components/AskCard.tsx
 msgid "Undo"
