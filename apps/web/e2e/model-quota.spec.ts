@@ -27,6 +27,20 @@ test("connected account quota shows remaining windows and refreshes", async ({
     }),
   );
   let usedPercent = 91;
+  let policy = {
+    enabled: false,
+  };
+  await page.route("**/rpc/models/quotaPolicy", (route) =>
+    route.fulfill({ json: { json: policy } }),
+  );
+  await page.route("**/rpc/models/setQuotaPolicy", async (route) => {
+    const body = route.request().postDataJSON() as {
+      json: { credentialId: string; policy: typeof policy };
+    };
+    expect(body.json.credentialId).toBe(credentialId);
+    policy = body.json.policy;
+    await route.fulfill({ json: { json: policy } });
+  });
   await page.route("**/rpc/models/quota", (route) =>
     route.fulfill({
       json: {
@@ -63,6 +77,14 @@ test("connected account quota shows remaining windows and refreshes", async ({
   usedPercent = 100;
   await quota.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(quota).toContainText("0% remaining");
+  await quota.getByRole("button", { name: "Routing", exact: true }).click();
+  await quota.getByRole("checkbox", { name: "Skip exhausted accounts", exact: true }).check();
+  await expect(quota.getByRole("spinbutton")).toHaveCount(0);
+  await expect(quota.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+  await quota.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(quota.getByRole("status")).toContainText("Saved");
+  expect(policy).toEqual({ enabled: true });
+  await captureScreenshot(page, testInfo, "model-quota-routing-settings");
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(quota).toBeVisible();
   await captureScreenshot(page, testInfo, "model-quota-narrow");

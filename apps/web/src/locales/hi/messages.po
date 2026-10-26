@@ -1833,6 +1833,10 @@ msgstr "MCP सर्वर लोड नहीं हो सके"
 msgid "Could not load model settings"
 msgstr "मॉडल सेटिंग्स लोड नहीं हो सकीं"
 
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Could not load routing settings"
+msgstr ""
+
 #: src/pages/RoutineRunHistory.tsx
 msgid "Could not load run history"
 msgstr "रन का इतिहास लोड नहीं हो सका"
@@ -1963,6 +1967,10 @@ msgstr "मॉडल सहेजा नहीं जा सका"
 #: src/pages/shell/use-routine-editor.ts
 msgid "Could not save routine"
 msgstr "रूटीन सहेजा नहीं जा सका"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Could not save routing settings"
+msgstr ""
 
 #: src/components/ApprovalRulesSettings.tsx
 msgid "Could not save rule"
@@ -3199,6 +3207,7 @@ msgid "Load web images automatically"
 msgstr "वेब छवियाँ अपने-आप लोड करें"
 
 #: src/pages/model-settings/connection-quota.tsx
+#: src/pages/model-settings/quota-routing.tsx
 msgid "Loading"
 msgstr ""
 
@@ -4650,6 +4659,10 @@ msgstr "रूटीन्स"
 msgid "Routines that run while you're away"
 msgstr ""
 
+#: src/pages/model-settings/connection-quota.tsx
+msgid "Routing"
+msgstr ""
+
 #: src/components/markdown-copy.tsx
 msgid "Row"
 msgstr "पंक्ति"
@@ -4704,6 +4717,7 @@ msgstr "शनिवार"
 #: src/pages/McpServersOverlay.tsx
 #: src/pages/model-settings/connection-controls.tsx
 #: src/pages/model-settings/providers-section.tsx
+#: src/pages/model-settings/quota-routing.tsx
 #: src/pages/ModelSettingsOverlay.tsx
 #: src/pages/RoutineEditor.tsx
 #: src/pages/shell/bot-panel.tsx
@@ -4727,6 +4741,7 @@ msgstr "कार्यक्षेत्र सहेजें और नवी
 #: src/components/AskCard.tsx
 #: src/components/teach/SkillDraftCard.tsx
 #: src/pages/ExternalConversationSettings.tsx
+#: src/pages/model-settings/quota-routing.tsx
 msgid "Saved"
 msgstr "सहेजा गया"
 
@@ -5059,6 +5074,10 @@ msgstr "स्किल्स उस लाइब्रेरी में ज�
 #: src/pages/shell/computer-release-actions.tsx
 msgid "Skip"
 msgstr "छोड़ें"
+
+#: src/pages/model-settings/quota-routing.tsx
+msgid "Skip exhausted accounts"
+msgstr ""
 
 #: src/lib/localized-provider-hint.ts
 msgid "Skip or deploy key"

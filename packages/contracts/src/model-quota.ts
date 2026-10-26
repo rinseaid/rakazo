@@ -17,3 +17,8 @@ export const ModelQuotaSchema = z.object({
   windows: z.array(ModelQuotaWindowSchema),
 });
 export type ModelQuota = z.infer<typeof ModelQuotaSchema>;
+
+export const ModelQuotaPolicySchema = z.object({
+  enabled: z.boolean().default(false),
+});
+export type ModelQuotaPolicy = z.infer<typeof ModelQuotaPolicySchema>;
