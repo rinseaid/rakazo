@@ -308,7 +308,7 @@ msgstr "{provider} took too long to respond. Try again."
 msgid "{remaining} left"
 msgstr "{remaining} left"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "{remaining}% remaining"
 msgstr "{remaining}% remaining"
 
@@ -638,7 +638,7 @@ msgstr "Allow once"
 msgid "Allow writing"
 msgstr "Allow writing"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Allowance"
 msgstr "Allowance"
 
@@ -1337,6 +1337,10 @@ msgctxt "email sign-in"
 msgid "Code"
 msgstr "Code"
 
+#: src/lib/localized-provider-hint.ts
+msgid "Codex"
+msgstr "Codex"
+
 #. placeholder {0}: headerName(group)
 #: src/pages/shell/sidebar-roster.tsx
 msgid "Collapse {0}"
@@ -1861,6 +1865,10 @@ msgstr "Could not load this chat."
 #: src/components/ArtifactFileCard.tsx
 msgid "Could not load this file."
 msgstr "Could not load this file."
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Could not load usage"
+msgstr "Could not load usage"
 
 #: src/pages/VoiceSettingsOverlay.tsx
 msgid "Could not load voice settings"
@@ -3141,7 +3149,7 @@ msgstr "Last check {0}: changed"
 msgid "Last check {0}: no changes"
 msgstr "Last check {0}: no changes"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Last known usage"
 msgstr "Last known usage"
 
@@ -3206,7 +3214,8 @@ msgstr "Load older runs"
 msgid "Load web images automatically"
 msgstr "Load web images automatically"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
+#: src/components/usage/provider-quota-stack.tsx
 #: src/pages/model-settings/quota-routing.tsx
 msgid "Loading"
 msgstr "Loading"
@@ -3747,6 +3756,10 @@ msgstr "No bots"
 msgid "No bots match"
 msgstr "No bots match"
 
+#: src/components/usage/provider-quota-stack.tsx
+msgid "No connected providers"
+msgstr "No connected providers"
+
 #: src/components/AskCard.tsx
 msgid "No longer active"
 msgstr "No longer active"
@@ -4242,11 +4255,11 @@ msgstr "Pull request"
 msgid "Queued"
 msgstr "Queued"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Quota"
 msgstr "Quota"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Quota unavailable"
 msgstr "Quota unavailable"
 
@@ -4368,7 +4381,7 @@ msgstr "Redirect URI"
 #: src/App.tsx
 #: src/components/ErrorBoundary.tsx
 #: src/components/ModelCredits.tsx
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 #: src/pages/RoutineRunHistory.tsx
 msgid "Refresh"
 msgstr "Refresh"
@@ -4551,7 +4564,7 @@ msgstr "Reset computer?"
 msgid "Reset password"
 msgstr "Reset password"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Reset unknown"
 msgstr "Reset unknown"
 
@@ -4559,7 +4572,7 @@ msgstr "Reset unknown"
 msgid "Reset your password"
 msgstr "Reset your password"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Resets"
 msgstr "Resets"
 
@@ -4659,7 +4672,7 @@ msgstr "Routines"
 msgid "Routines that run while you're away"
 msgstr "Routines that run while you're away"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/pages/ModelSettingsOverlay.tsx
 msgid "Routing"
 msgstr "Routing"
 
@@ -4915,7 +4928,7 @@ msgstr "Server name"
 msgid "Server URL"
 msgstr "Server URL"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Session"
 msgstr "Session"
 
@@ -5705,7 +5718,7 @@ msgstr "Update instructions?"
 msgid "Update progress"
 msgstr "Update progress"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Updated"
 msgstr "Updated"
 
@@ -5742,10 +5755,14 @@ msgstr "Upload"
 msgid "Urgent"
 msgstr "Urgent"
 
-#: src/components/SidebarFooter.tsx
+#: src/components/usage/usage-popover.tsx
 #: src/pages/SettingsOverlay.tsx
 msgid "Usage"
 msgstr "Usage"
+
+#: src/components/usage/connection-quota.tsx
+msgid "Usage not reported by provider"
+msgstr "Usage not reported by provider"
 
 #. Switches the saved timezone to this device's, e.g. 'Use Pacific/Auckland'
 #. placeholder {0}: deviceTimezone.replaceAll("_", " ")
@@ -5848,6 +5865,10 @@ msgstr "Version"
 msgid "View chat"
 msgstr "View chat"
 
+#: src/components/usage/usage-popover.tsx
+msgid "View usage"
+msgstr "View usage"
+
 #: src/pages/SettingsOverlay.tsx
 #: src/pages/shell/bot-panel.tsx
 #: src/pages/SpaceSettingOverrides.tsx
@@ -5901,7 +5922,7 @@ msgstr "Weekdays"
 msgid "Weekends"
 msgstr "Weekends"
 
-#: src/pages/model-settings/connection-quota.tsx
+#: src/components/usage/connection-quota.tsx
 msgid "Weekly"
 msgstr "Weekly"
 
@@ -6079,6 +6100,10 @@ msgstr "Your team of always-on agents<0/>that you can give real work to."
 #: src/lib/user-error.ts
 msgid "Your voice provider is out of credit."
 msgstr "Your voice provider is out of credit."
+
+#: src/pages/ModelSettingsOverlay.tsx
+msgid "CommandCode"
+msgstr "CommandCode"
 
 #: src/lib/user-error.ts
 msgid "Your voice provider key was rejected."

@@ -316,3 +316,29 @@ describe("withConnectionName", () => {
     );
   });
 });
+
+it("does not repeat the recognized compatible service's saved preset name", () => {
+  expect(
+    connectionDisplayName(
+      {
+        provider: "openai-compatible",
+        label: "CommandCode",
+        baseUrl: "https://api.commandcode.ai/provider/v1",
+      },
+      "OpenAI-compatible",
+    ),
+  ).toBe("CommandCode");
+});
+
+it("preserves a manually named CommandCode account without repeating the service", () => {
+  expect(
+    connectionDisplayName(
+      {
+        provider: "openai-compatible",
+        label: "CommandCode GOAT",
+        baseUrl: "https://api.commandcode.ai/provider/v1",
+      },
+      "OpenAI-compatible",
+    ),
+  ).toBe("CommandCode GOAT");
+});

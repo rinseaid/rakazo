@@ -41,6 +41,7 @@ import {
   routineWakeupJob,
   runContinueJob,
   SandboxRateLimitError,
+  SubscriptionQuotaWaitError,
   TransientModelError,
 } from "@rakazo/adapter-kit";
 import type { ComputerCommand, MessageBlock, ModelRoleChoice, RunStatus } from "@rakazo/contracts";
@@ -130,6 +131,7 @@ import {
   countUnreadInboxChats,
   createSpaceForMember,
   createThreadMessageInTransaction,
+  deferRunForQuota,
   dropRunTurnCheckpoint,
   effectiveMemoryScope,
   findAutoReviewPreference,
@@ -4016,6 +4018,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           userId: run.userId,
           botId: bot.id,
           runId,
+          runLease: { owner: workerId, fence },
           screenLeaseId: screenLeaseIdForRun(computerLease, runId, fence),
           signal: runAbortController.signal,
           ...connectedContext(connectedPlugins),
@@ -5414,6 +5417,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 botId: bot.id,
                 runId,
                 signal: context.signal,
+                runLease: context.runLease,
               };
               const checkerProvider = async (
                 checker: AutoReviewChecker,
@@ -8874,6 +8878,36 @@ export function createRunExecutor(deps: ExecutorDeps) {
             getLogger().error("history.compact enqueue failed", error);
           }
         } catch (caughtError) {
+          if (caughtError instanceof SubscriptionQuotaWaitError) {
+            if (!pendingTurnCheckpoints.has("quota-wait"))
+              throw new Error("Quota wait requires a resumable turn checkpoint");
+            await workspaceCheckpoint.flush();
+            await persistTurnCheckpoint("quota-wait");
+            await settleRunningHelpers();
+            const deferred = await deferRunForQuota(deps.prisma, {
+              runId,
+              spaceId: run.spaceId,
+              threadId: thread.id,
+              botId: bot.id,
+              taskId: run.taskId,
+              attemptId: attempt.id,
+              leaseOwner: workerId,
+              leaseFence: fence,
+              retryAt: caughtError.retryAt,
+            });
+            if (deferred) {
+              await deps.jobs
+                .enqueue({ ...runContinueJob(runId), availableAt: deferred.wakeAt })
+                .catch((error) =>
+                  getLogger().warn("quota.run_wakeup_failed", {
+                    "run.id": runId,
+                    error: sanitizedError(error),
+                  }),
+                );
+              await deps.events.notify(deferred.threadId, deferred.seq).catch(() => undefined);
+            }
+            return;
+          }
           let error = caughtError;
           // A refused account limit needs user/operator action, not setup-job retries.
           // Keep the provisioning error even if aborting the model masked it.

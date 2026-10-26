@@ -1,5 +1,5 @@
 import { Plural, Trans, useLingui } from "@lingui/react/macro";
-import { isOllamaCloudBaseUrl } from "@rakazo/contracts";
+import { compatibleApiKeyRequired, isOllamaCloudBaseUrl } from "@rakazo/contracts";
 import { Button, Disclosure, Input } from "@rakazo/ui-web";
 import { Check, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -394,13 +394,15 @@ export function CompatibleKeyControls({
           aria-label={t`API key`}
           value={apiKey}
           onChange={(event) => updateApiKey(event.target.value)}
-          required={isOllamaCloudBaseUrl(baseUrl)}
+          required={compatibleApiKeyRequired(baseUrl)}
           placeholder={
             isOllamaCloudBaseUrl(baseUrl)
               ? t`Ollama API key`
               : credential?.hasKey
                 ? t`Paste a replacement key`
-                : t`Optional`
+                : compatibleApiKeyRequired(baseUrl)
+                  ? t`API key`
+                  : t`Optional`
           }
           type="password"
           autoComplete="new-password"

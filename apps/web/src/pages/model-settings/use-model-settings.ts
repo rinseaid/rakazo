@@ -641,7 +641,7 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
               maxImagesPerPrompt: maxImagesPerPromptInput,
               ...(intent ? { makeDefault: intent.makeDefault, scope } : {}),
               apiKey: apiKey.trim() || undefined,
-              label: selected.providerName ?? selected.provider,
+              label: credential?.label ?? selectedProviderName,
               credentialId: credential?.id ?? null,
             }
           : {

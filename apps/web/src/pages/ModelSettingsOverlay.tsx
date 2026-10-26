@@ -1,9 +1,9 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { SettingsScope } from "@rakazo/contracts";
 import {
+  COMMANDCODE_BASE_URL,
   compatibleConnectionName,
   connectionDisplayName,
-  isOllamaCloudBaseUrl,
   OLLAMA_CLOUD_BASE_URL,
   OPENAI_COMPATIBLE_PROVIDER_ID,
   savedCompatibleEndpointMatches,
@@ -33,8 +33,8 @@ import type { ModelRoleConnectIntent } from "./ModelRoleSettings";
 import { ModelRoleSettings } from "./ModelRoleSettings";
 import { CompatibleModelFields } from "./model-settings/compatible-model-fields";
 import { CompatibleKeyControls, ConnectionControls } from "./model-settings/connection-controls";
-import { ConnectionQuota } from "./model-settings/connection-quota";
 import { ConnectionNameField, ProvidersSection } from "./model-settings/providers-section";
+import { QuotaRouting } from "./model-settings/quota-routing";
 import type { ConnectableProvider } from "./model-settings/role-model-picker";
 import { SpaceBotsModelNotice } from "./model-settings/space-bots-model";
 import { useModelSettings } from "./model-settings/use-model-settings";
@@ -99,27 +99,32 @@ export function ModelSettingsOverlay({
   const providers: ConnectableProvider[] = groups
     .filter((group) => !credentialByProvider.has(group.id))
     .map((group) => ({ id: group.id, name: group.name }));
-  if (
-    groups.some((group) => group.id === OPENAI_COMPATIBLE_PROVIDER_ID) &&
-    !isOllamaCloudBaseUrl(credentialByProvider.get(OPENAI_COMPATIBLE_PROVIDER_ID)?.baseUrl)
+  const compatiblePresets: ConnectableProvider[] = groups.some(
+    (group) => group.id === OPENAI_COMPATIBLE_PROVIDER_ID,
   )
-    providers.push({
-      id: OPENAI_COMPATIBLE_PROVIDER_ID,
-      name: t`Ollama Cloud`,
-      baseUrl: OLLAMA_CLOUD_BASE_URL,
-    });
+    ? [
+        {
+          id: OPENAI_COMPATIBLE_PROVIDER_ID,
+          name: t`Ollama Cloud`,
+          baseUrl: OLLAMA_CLOUD_BASE_URL,
+        },
+        { id: OPENAI_COMPATIBLE_PROVIDER_ID, name: t`CommandCode`, baseUrl: COMMANDCODE_BASE_URL },
+      ]
+    : [];
+  providers.push(
+    ...compatiblePresets.filter(
+      (preset) =>
+        !credentials.some(
+          (entry) =>
+            entry.provider === preset.id &&
+            savedCompatibleEndpointMatches(entry.baseUrl ?? "", preset.baseUrl),
+        ),
+    ),
+  );
   // Adding another account is open to every provider, connected or not.
   const allProviders: ConnectableProvider[] = [
     ...groups.map((group) => ({ id: group.id, name: group.name })),
-    ...(groups.some((group) => group.id === OPENAI_COMPATIBLE_PROVIDER_ID)
-      ? [
-          {
-            id: OPENAI_COMPATIBLE_PROVIDER_ID,
-            name: t`Ollama Cloud`,
-            baseUrl: OLLAMA_CLOUD_BASE_URL,
-          },
-        ]
-      : []),
+    ...compatiblePresets,
   ];
   const connectionName = (entry: ModelCredential) => {
     const group = groups.find((item) => item.id === entry.provider);
@@ -134,7 +139,7 @@ export function ModelSettingsOverlay({
       credentialByProvider.get(id)?.baseUrl,
       groups.find((group) => group.id === id)?.name ?? id,
     );
-  // The Ollama Cloud preset shares the compatible provider id with a saved local server.
+  // Compatible presets share the compatible provider id with a saved local server.
   const connected = Boolean(
     credential &&
       (!isOpenAiCompatible || savedCompatibleEndpointMatches(baseUrl, credential.baseUrl)),
@@ -273,8 +278,12 @@ export function ModelSettingsOverlay({
             onRenamed={() => void refresh()}
           />
         ) : null}
-        {connected && credential?.authKind === "oauth" ? (
-          <ConnectionQuota credentialId={credential.id} />
+        {connected &&
+        credential?.authKind === "oauth" &&
+        ["anthropic", "openai-codex"].includes(credential.provider) ? (
+          <section className="mb-6" aria-label={t`Routing`}>
+            <QuotaRouting credentialId={credential.id} />
+          </section>
         ) : null}
         {connection}
       </fieldset>

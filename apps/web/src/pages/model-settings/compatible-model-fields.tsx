@@ -1,6 +1,6 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import type { ThinkingLevel } from "@rakazo/contracts";
-import { isOllamaCloudBaseUrl } from "@rakazo/contracts";
+import { compatibleApiKeyRequired } from "@rakazo/contracts";
 import { toggleEnabledModelId } from "@rakazo/core";
 import {
   Button,
@@ -121,7 +121,7 @@ export function CompatibleModelFields({
           {probing ? <Trans>Finding…</Trans> : <Trans>Find models</Trans>}
         </Button>
       </div>
-      {!isOllamaCloudBaseUrl(baseUrl) ? (
+      {!compatibleApiKeyRequired(baseUrl) ? (
         <Disclosure
           className="mt-3 text-[13.5px] text-muted-foreground"
           summary={<Trans>Setup help</Trans>}

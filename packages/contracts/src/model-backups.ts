@@ -46,11 +46,16 @@ export function connectionDisplayName(
   if (
     !label ||
     label === credential.provider ||
+    label === provider ||
     label === providerName ||
     defaultNames.includes(label)
   )
     return provider;
-  if (label.toLowerCase().startsWith(providerName.toLowerCase())) return label;
+  if (
+    label.toLowerCase().startsWith(providerName.toLowerCase()) ||
+    label.toLowerCase().startsWith(provider.toLowerCase())
+  )
+    return label;
   return `${provider} (${label})`;
 }
 
