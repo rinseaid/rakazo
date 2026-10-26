@@ -613,7 +613,7 @@ describe("Pi runtime ordered model fallback", () => {
     input.model.callObserver = {
       beforeCall: async () => {
         throw new SubscriptionQuotaDeclinedError(
-          "headroom",
+          "exhausted",
           new Date(Date.now() + 60_000).toISOString(),
         );
       },
@@ -623,6 +623,14 @@ describe("Pi runtime ordered model fallback", () => {
       stream(target, message(target, [{ type: "text", text: "Backup response." }], "stop")),
     );
     const events = await run(input);
+    expect(
+      events
+        .filter((event) => event.type === "progress" && event.route)
+        .map((event) => (event.type === "progress" ? event.route : null)),
+    ).toEqual([
+      { action: "skipped", provider: primary.provider, model: primary.id, reason: "exhausted" },
+      { action: "selected", provider: backupA.provider, model: backupA.id },
+    ]);
     expect(providerState.stream).toHaveBeenCalledTimes(1);
     expect(providerState.stream.mock.calls[0]?.[0]).toMatchObject({ provider: backupA.provider });
     expect(events).toContainEqual(
@@ -637,7 +645,7 @@ describe("Pi runtime ordered model fallback", () => {
       beforeCall: async () => {
         if (++admissions > 1)
           throw new SubscriptionQuotaDeclinedError(
-            "headroom",
+            "exhausted",
             new Date(Date.now() + 60_000).toISOString(),
           );
         return "first-call";
@@ -1331,7 +1339,11 @@ describe("Pi runtime ordered model fallback", () => {
     const events = await run(input);
 
     expect(input.onModelChange).toHaveBeenCalledExactlyOnceWith(backupA.provider, backupA.id);
-    expect(events.filter((event) => event.type === "progress")).toEqual([]);
+    expect(events.filter((event) => event.type === "progress")).toEqual([
+      expect.objectContaining({
+        route: { action: "selected", provider: backupA.provider, model: backupA.id },
+      }),
+    ]);
   });
 
   it("prunes new screenshots using the active backup image limit", async () => {
