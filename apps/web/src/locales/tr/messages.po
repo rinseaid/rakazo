@@ -6120,11 +6120,6 @@ msgstr "Could not save usage accounts"
 msgid "Linked to {gatewayNames}"
 msgstr "Linked to {gatewayNames}"
 
-#: src/lib/user-error.ts
-msgid "Your voice provider key was rejected."
-msgstr "Ses sağlayıcınız anahtarı reddetti."
-
-
 msgid "Custom usage endpoint"
 msgstr "Custom usage endpoint"
 
@@ -6145,3 +6140,7 @@ msgstr "Usage endpoint token (optional)"
 
 msgid "Token will be removed when saved"
 msgstr "Token will be removed when saved"
+
+#: src/lib/user-error.ts
+msgid "Your voice provider key was rejected."
+msgstr "Ses sağlayıcınız anahtarı reddetti."

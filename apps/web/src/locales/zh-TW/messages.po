@@ -6121,11 +6121,6 @@ msgstr "Could not save usage accounts"
 msgid "Linked to {gatewayNames}"
 msgstr "Linked to {gatewayNames}"
 
-#: src/lib/user-error.ts
-msgid "Your voice provider key was rejected."
-msgstr "你的語音供應商拒絕了該金鑰。"
-
-
 msgid "Custom usage endpoint"
 msgstr "Custom usage endpoint"
 
@@ -6146,3 +6141,7 @@ msgstr "Usage endpoint token (optional)"
 
 msgid "Token will be removed when saved"
 msgstr "Token will be removed when saved"
+
+#: src/lib/user-error.ts
+msgid "Your voice provider key was rejected."
+msgstr "你的語音供應商拒絕了該金鑰。"
