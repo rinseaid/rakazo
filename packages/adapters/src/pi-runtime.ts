@@ -101,6 +101,7 @@ import type { PiSessionHandle, PiSessionRecorder } from "./pi-session.js";
 import { PiJsonlSessionRecorder } from "./pi-session.js";
 import { recordPiTelemetryContent, withPiTelemetry, withPiTelemetrySpan } from "./pi-telemetry.js";
 import { observedPiStream } from "./pi-usage.js";
+import { quotaRouteReporter } from "./quota-route-reporter.js";
 import type { RuntimeContextDecision } from "./runtime-context.js";
 import { createRuntimeContextPolicy, VERBATIM_TOOL_RESULTS } from "./runtime-context.js";
 import { SCHEDULE_TOOL_NAMES } from "./schedule-tools.js";
@@ -427,6 +428,7 @@ export class PiAgentRuntime implements AgentRuntime {
           AssistantMessage["content"],
           SubscriptionQuotaDeclinedError
         >();
+        const reportRoute = quotaRouteReporter(request.model, (event) => queue.push(event));
         const hasBackups = Boolean(request.fallbackModels?.length);
         let agent: Agent;
         let activeStreamTarget = host.activeModel;
@@ -466,8 +468,11 @@ export class PiAgentRuntime implements AgentRuntime {
                     ...usageHooks,
                     prepareContext,
                     onProviderError: (message) => providerFailures.add(message.content),
-                    onCapacityDeclined: (message, error) =>
-                      capacityDeclines.set(message.content, error),
+                    onAdmitted: () => reportRoute.admitted(target.config),
+                    onCapacityDeclined: (message, error) => {
+                      capacityDeclines.set(message.content, error);
+                      reportRoute.declined(target.config, error);
+                    },
                   },
                 ),
               target.config.cacheCapabilities?.retentionMode,
