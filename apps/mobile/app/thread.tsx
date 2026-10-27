@@ -1713,10 +1713,7 @@ function Thread({ sessionEpoch, userId }: { sessionEpoch: number; userId: string
       if (settings) router.push(settings);
       return;
     }
-    router.push({
-      pathname: "/account",
-      params: action === "settings-usage" ? { focus: "usage" } : undefined,
-    });
+    router.push(action === "settings-usage" ? "/usage" : "/account");
   }
 
   function followOwnSend() {

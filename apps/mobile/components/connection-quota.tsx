@@ -46,7 +46,7 @@ export function ConnectionQuota({
       };
     }, [credentialId, rpc, refresh]),
   );
-  if (quota?.status === "unsupported") return null;
+  if (quota?.status === "unsupported" && !readOnly) return null;
   return (
     <>
       <SettingsGroup
@@ -57,6 +57,9 @@ export function ConnectionQuota({
             : undefined
         }
       >
+        {quota?.status === "unsupported" ? (
+          <SettingsRow title={t("Usage not reported by provider")} />
+        ) : null}
         {quota?.status === "stale" ? <SettingsRow title={t("Last known usage")} /> : null}
         {!quota || quota.status === "unavailable" ? (
           <SettingsRow title={pending ? t("Loading") : t("Quota unavailable")} />

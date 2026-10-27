@@ -218,6 +218,9 @@ export default function Account() {
     <SettingsRow
       accessible
       title={t("Usage")}
+      accessibilityRole={focus === "usage" ? undefined : "button"}
+      chevron={focus === "usage" ? undefined : "right"}
+      onPress={focus === "usage" ? undefined : () => router.push("/usage")}
       detail={
         usage
           ? t("{runs} runs, {tokens} tokens", {

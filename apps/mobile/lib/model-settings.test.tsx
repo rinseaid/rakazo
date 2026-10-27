@@ -275,6 +275,7 @@ it("offers deployment-funded providers and Ollama Cloud once among providers to 
     "Anthropic",
     "OpenRouter",
     "Ollama Cloud",
+    "CommandCode",
   ]);
 });
 
@@ -284,6 +285,7 @@ it("does not offer Ollama Cloud again once it is the saved connection", async ()
     expect((await notConnectedChoices()).map((choice) => choice.label)).toEqual([
       "Anthropic",
       "OpenRouter",
+      "CommandCode",
     ]);
   } finally {
     saved.baseUrl = savedEndpoint;
