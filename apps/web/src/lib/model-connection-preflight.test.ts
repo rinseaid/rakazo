@@ -218,6 +218,23 @@ describe("runModelConnectionPreflight", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("accepts a stored native credential only for native sign-in preflight", async () => {
+    const native = await runModelConnectionPreflight({
+      authKind: "native",
+      provider: "google-antigravity",
+      storedAuthKind: "native",
+    });
+    expect(native.ok).toBe(true);
+
+    const oauth = await runModelConnectionPreflight({
+      authKind: "oauth",
+      provider: "google-antigravity",
+      storedAuthKind: "native",
+    });
+    expect(oauth.ok).toBe(false);
+    if (!oauth.ok) expect(oauth.failure.message).toMatch(/different subscription credential type/);
+  });
+
   it("does not treat an unreadable credential as a missing sign-in", async () => {
     const result = await runModelConnectionPreflight({
       authKind: "oauth",

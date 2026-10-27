@@ -1,4 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+
+// These updater state tests do not exercise native crash reporting. Keep importing
+// the updater independent from Electron's postinstall binary during offline runs.
+vi.mock("./native-crashes.js", () => ({
+  configureNativeCrashReporting: vi.fn(),
+  disableNativeCrashReporting: vi.fn(),
+}));
+
 import {
   classifyUpdaterFailure,
   DesktopUpdateController,

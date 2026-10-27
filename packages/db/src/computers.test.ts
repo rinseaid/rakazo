@@ -14,6 +14,7 @@ function fakePrisma(count = 0, existing = false) {
   return {
     // Looks like a TransactionClient: $queryRaw present, no $transaction.
     $queryRaw: vi.fn(async () => [{ lock: "1" }]),
+    accountOperationHost: { count: vi.fn(async () => 0) },
     computer: {
       findUnique: vi.fn(async () => (existing ? { id: "existing" } : null)),
       count: vi.fn(async () => count),
@@ -27,6 +28,7 @@ function fakeRestorePrisma(results: { alreadyLive: number; inUse: number }) {
     args.where.id ? results.alreadyLive : results.inUse,
   );
   return {
+    accountOperationHost: { count: vi.fn(async () => 0) },
     computer: { count },
   } as unknown as PrismaClient;
 }
@@ -97,6 +99,7 @@ function fakeSerializingPrisma(initialInUse = 0) {
           }
           return [{ lock: "1" }];
         }),
+        accountOperationHost: { count: vi.fn(async () => 0) },
         computer: {
           findUnique: vi.fn(async (args: { where: { scopeKey: string } }) => {
             const row = rows.get(args.where.scopeKey);
@@ -208,6 +211,7 @@ function fakeSerializingRestorePrisma(
           }
           return [{ lock: "1" }];
         }),
+        accountOperationHost: { count: vi.fn(async () => 0) },
         computer: {
           count: vi.fn(async (args: { where: { id?: string } }) => {
             if (args.where.id) return (live.get(args.where.id)?.size ?? 0) > 0 ? 1 : 0;

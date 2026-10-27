@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""Bounded duplex process lifecycle helper, not a sandbox/security boundary.
+
+The supervisor sends JSON lines on stdin. Child output stays on stdout/stderr.
+Transport EOF, close, TERM and timeout stop the command process group and confirm
+the primary child exit. Helpers must clean up descendants that create new sessions;
+this wrapper does not claim containment of daemonized or malicious processes.
+"""
+import base64
+import json
+import os
+import selectors
+import signal
+import subprocess
+import sys
+import time
+
+MAX_FRAME = 100 * 1024
+MAX_WRITE = 64 * 1024
+MAX_PENDING = 256 * 1024
+
+
+def cleanup(child):
+    if child is None:
+        return True
+    def send(kind):
+        try:
+            os.killpg(child.pid, kind)
+        except ProcessLookupError:
+            pass
+    try:
+        send(signal.SIGTERM)
+    except OSError:
+        return False
+    graceful = True
+    try:
+        child.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        graceful = False
+    # Also stop same-group descendants left behind by a completed primary child.
+    try:
+        send(signal.SIGKILL)
+    except OSError:
+        return False
+    try:
+        child.wait(timeout=2)
+        # Killing the primary confirms exit, not its cooperative descendant cleanup.
+        return graceful
+    except subprocess.TimeoutExpired:
+        return False
+
+
+def run():
+    if len(sys.argv) < 3 or os.name != 'posix':
+        return 125
+    try:
+        timeout = int(sys.argv[1]) / 1000
+        if timeout <= 0:
+            return 125
+    except (ValueError, OSError):
+        return 125
+    stopping = False
+
+    def stop(_signum, _frame):
+        nonlocal stopping
+        stopping = True
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    child = None
+    selector = selectors.DefaultSelector()
+    result = 125
+    try:
+        child = subprocess.Popen(sys.argv[2:], stdin=subprocess.PIPE, start_new_session=True)
+        os.set_blocking(0, False)
+        os.set_blocking(child.stdin.fileno(), False)
+        selector.register(0, selectors.EVENT_READ, 'input')
+        output_registered = False
+        pending = bytearray()
+        incoming = bytearray()
+        end = False
+        deadline = time.monotonic() + timeout
+        while True:
+            code = child.poll()
+            if code is not None:
+                result = code if code >= 0 else 128 - code
+                break
+            if stopping:
+                result = 0
+                break
+            if time.monotonic() >= deadline:
+                result = 124
+                break
+            if pending and not output_registered:
+                selector.register(child.stdin, selectors.EVENT_WRITE, 'child')
+                output_registered = True
+            if not pending and output_registered:
+                selector.unregister(child.stdin)
+                output_registered = False
+            if end and not pending and not child.stdin.closed:
+                child.stdin.close()
+            for key, _ in selector.select(min(.05, max(0, deadline - time.monotonic()))):
+                if key.data == 'child':
+                    try:
+                        count = os.write(child.stdin.fileno(), pending)
+                        del pending[:count]
+                    except BlockingIOError:
+                        pass
+                    continue
+                chunk = os.read(0, 4096)
+                if not chunk:
+                    stopping = True
+                    break
+                incoming.extend(chunk)
+                while b'\n' in incoming:
+                    line, _, rest = incoming.partition(b'\n')
+                    incoming = bytearray(rest)
+                    if len(line) > MAX_FRAME:
+                        raise ValueError('frame limit')
+                    frame = json.loads(line)
+                    if not isinstance(frame, dict):
+                        raise ValueError('frame shape')
+                    kind = frame.get('type')
+                    if kind == 'close' and set(frame) == {'type'}:
+                        stopping = True
+                        break
+                    if kind == 'end' and set(frame) == {'type'} and not end:
+                        end = True
+                    elif kind == 'stdin' and set(frame) == {'type', 'data'} and not end:
+                        if not isinstance(frame['data'], str):
+                            raise ValueError('stdin shape')
+                        data = base64.b64decode(frame['data'], validate=True)
+                        if len(data) > MAX_WRITE or len(pending) + len(data) > MAX_PENDING:
+                            raise ValueError('stdin limit')
+                        pending.extend(data)
+                    else:
+                        raise ValueError('frame type')
+                if len(incoming) > MAX_FRAME:
+                    raise ValueError('frame limit')
+        return result
+    except (ValueError, OSError, TypeError):
+        return 125
+    finally:
+        selector.close()
+        if child is not None and child.stdin is not None:
+            child.stdin.close()
+        # No diagnostics: command output and credential-bearing input stay opaque.
+        if not cleanup(child) or (child is not None and child.returncode == 125):
+            # Preserve the helper's explicit unconfirmed-cleanup result.
+            return 125
+
+
+if __name__ == '__main__':
+    sys.exit(run())

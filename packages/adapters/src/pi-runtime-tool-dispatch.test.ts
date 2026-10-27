@@ -1,4 +1,4 @@
-import type { AgentToolCompletion, ConnectorTool } from "@rakazo/adapter-kit";
+import type { AgentRunRequest, AgentToolCompletion, ConnectorTool } from "@rakazo/adapter-kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { builtinAgentTools } from "./builtin-tools.js";
 
@@ -6,6 +6,7 @@ const fakeAgentState = vi.hoisted(() => ({
   mode: "dispatch" as
     | "dispatch"
     | "empty"
+    | "late-steering-native"
     | "two-boundaries"
     | "silent-continuation"
     | "subagent-limit"
@@ -49,6 +50,7 @@ const fakeAgentState = vi.hoisted(() => ({
   promptInputs: [] as string[],
   promptImages: [] as unknown[][],
   toolResult: undefined as unknown,
+  nextNativePrompt: undefined as (() => void) | undefined,
 }));
 
 vi.mock("@earendil-works/pi-agent-core", () => ({
@@ -91,6 +93,13 @@ vi.mock("@earendil-works/pi-agent-core", () => ({
           });
         }
         fakeAgentState.preparedMessages = [...fakeAgentState.steeredMessages];
+        return;
+      }
+
+      if (fakeAgentState.mode === "late-steering-native") {
+        await this.prepareNextTurnWithContext?.({ context: { messages: [] } });
+        fakeAgentState.preparedMessages = [...fakeAgentState.steeredMessages];
+        fakeAgentState.nextNativePrompt?.();
         return;
       }
 
@@ -476,6 +485,7 @@ describe("Pi connector tool dispatch", () => {
     fakeAgentState.promptInputs = [];
     fakeAgentState.promptImages = [];
     fakeAgentState.toolResult = undefined;
+    fakeAgentState.nextNativePrompt = undefined;
     fakeAgentState.invoke = {
       name: "destination_write",
       args: { collection: "notes", title: "Result", body: "Done" },
@@ -583,6 +593,53 @@ describe("Pi connector tool dispatch", () => {
     expect(fakeAgentState.preparedMessages).toEqual([
       expect.objectContaining({ content: "First boundary context." }),
       expect.objectContaining({ content: "Next boundary context." }),
+    ]);
+  });
+
+  it("disables durable native history before a new prompt after late steering", async () => {
+    fakeAgentState.mode = "late-steering-native";
+    let providerRequest: AgentRunRequest | undefined;
+    let provenanceWhenProviderCreated: AgentRunRequest["durableNativeHistoryProvenance"];
+    let provenanceAtNextPrompt: AgentRunRequest["durableNativeHistoryProvenance"];
+    fakeAgentState.nextNativePrompt = () => {
+      provenanceAtNextPrompt = providerRequest?.durableNativeHistoryProvenance;
+    };
+    let claimCount = 0;
+    const runtime = new PiAgentRuntime({
+      createProvider: (_model, scope) => {
+        providerRequest = scope.request;
+        provenanceWhenProviderCreated = scope.request.durableNativeHistoryProvenance;
+        return undefined;
+      },
+    });
+
+    for await (const _event of runtime.run(
+      {
+        botId: "b",
+        threadId: "t",
+        runId: "late-steering-native",
+        sourceMessageId: "source-1",
+        durableNativeHistorySourceMessageId: "source-1",
+        prompt: "Current time: 2030-04-01T12:00:00Z\nQuestion: summarize the result",
+        instructions: "Follow the user's instructions.",
+        history: [{ id: "source-1", role: "user", content: "summarize the result" }],
+        tools: [],
+        model: { provider: "test", id: "dispatch-test-model" },
+        claimSteering: async () =>
+          ++claimCount === 1
+            ? []
+            : [{ id: "steering-1", messageId: "message-1", text: "Use the latest result." }],
+      },
+      { signal: new AbortController().signal },
+    )) {
+      // Exhaust the runtime event stream.
+    }
+
+    expect(provenanceWhenProviderCreated).toMatchObject({ sourceMessageId: "source-1" });
+    expect(providerRequest?.durableNativeHistoryProvenance).toBeUndefined();
+    expect(provenanceAtNextPrompt).toBeUndefined();
+    expect(fakeAgentState.preparedMessages).toEqual([
+      expect.objectContaining({ role: "user", content: "Use the latest result." }),
     ]);
   });
 

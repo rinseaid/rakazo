@@ -1,3 +1,4 @@
+export * from "./account-operation-hosts.js";
 export * from "./approval-settings.js";
 export * from "./artifact-versions.js";
 export * from "./billing.js";
@@ -29,6 +30,8 @@ export * from "./messaging.js";
 export * from "./model-credentials.js";
 export * from "./model-credits.js";
 export * from "./model-roles.js";
+export * from "./native-conversation-candidate.js";
+export * from "./native-conversation-state.js";
 export * from "./provider-transactions.js";
 export * from "./repos.js";
 export * from "./row-security.js";

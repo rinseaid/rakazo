@@ -4,14 +4,16 @@ import http from "node:http";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { resolveSupervisorToken } from "@rakazo/core";
+import { MAX_SANDBOX_COMMAND_TIMEOUT_MS, resolveSupervisorToken } from "@rakazo/core";
 import { describe, expect, it } from "vitest";
 import {
+  isRakazoContainer,
   MAX_SUPERVISOR_FILE_REQUEST_BYTES,
   MAX_SUPERVISOR_REQUEST_BYTES,
   resolveDockerSocketPath,
   supervisorApp,
   supervisorFileWriteSchema,
+  supervisorHttpOptions,
   supervisorRequestBodyLimit,
   waitForScreenReady,
 } from "./index.js";
@@ -55,6 +57,13 @@ import {
 } from "./supervisor-logic.js";
 
 const token = resolveSupervisorToken(process.env);
+
+it("bounds streaming request receipt by the command limit without relaxing header timeout", () => {
+  const baseline = http.createServer();
+  const server = http.createServer(supervisorHttpOptions);
+  expect(server.requestTimeout).toBe(MAX_SANDBOX_COMMAND_TIMEOUT_MS + 15_000);
+  expect(server.headersTimeout).toBe(baseline.headersTimeout);
+});
 
 describe("computer screen readiness", () => {
   it("waits for the server to actually answer HTTP requests before succeeding", async () => {
@@ -1163,4 +1172,25 @@ describe("computer command identity", () => {
     expect(route("/computers/:id/exec")).toContain("computerCommandEnv(layout)");
     expect(route("/computers/:id/terminal")).toContain("computerCommandEnv(screen.layout)");
   });
+});
+
+it("never grants ordinary computer access to an account host, even with matching bot labels", () => {
+  const computer = {
+    Config: {
+      Image: "fixture",
+      Labels: {
+        "rakazo.managed": "true",
+        "rakazo.botId": "fixture-bot",
+        "rakazo.spaceId": "fixture-space",
+        "rakazo.accountHost": "1",
+      },
+    },
+  };
+  expect(
+    isRakazoContainer(
+      computer as unknown as Parameters<typeof isRakazoContainer>[0],
+      "fixture-bot",
+      "fixture-space",
+    ),
+  ).toBe(false);
 });

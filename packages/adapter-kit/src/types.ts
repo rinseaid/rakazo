@@ -11,6 +11,8 @@ export interface AdapterContext {
   userId: string;
   botId?: string;
   runId?: string;
+  /** Server-owned execution fence for durable runtime state; never model input. */
+  runLease?: { owner: string; fence: number };
   /** Opaque fence for releasing a graphical screen without tearing down its replacement. */
   screenLeaseId?: string;
   /** Retain a completed run's screen for reuse by this bot. */
@@ -103,6 +105,36 @@ export interface CommandRequest {
   pty?: boolean;
   /** Maximum wall-clock runtime before the command and its descendants are terminated. */
   timeoutMs?: number;
+}
+
+/** Run-scoped non-PTY process IO. Consume events concurrently with writes. */
+/** Immutable, actor-owned fence for a private short-lived host; never a bot computer. */
+export interface AccountOperationLease {
+  id: string;
+  userId: string;
+  spaceId: string;
+  operationId: string;
+  expiresAt: Date;
+}
+
+export type AccountHostOperation = "model" | "model-login" | "model-catalog";
+
+/** Private host identity attested by the authenticated host transport, never model input. */
+export interface AccountHostProcess extends DuplexProcess {
+  /** Immutable runtime/image identity. Absent on older hosts: durable conversation reuse is disabled. */
+  readonly runtimeIdentity?: string;
+}
+
+export interface DuplexProcess {
+  events: AsyncIterable<ProcessEvent>;
+  /** At most 64 KiB per write; resolves after transport backpressure clears. */
+  write(data: Uint8Array): Promise<void>;
+  /** Close command stdin, leaving output and lifecycle control connected. */
+  end(): Promise<void>;
+  /** Rejects when transport loss prevents confirmation of process termination. */
+  exited: Promise<{ code: number }>;
+  /** Idempotent; confirms launched process exit. Cooperative helpers own detached child cleanup. */
+  close(): Promise<void>;
 }
 
 export type ProcessEvent =
@@ -423,7 +455,22 @@ export interface AgentSteeringMessage {
 /** Adapter-supplied cache policy metadata; absent fields mean unknown. */
 export type CacheCapabilities = ConnectionCacheCapabilities;
 
+/** Opaque, encrypted-at-rest account state owned by a model-managed runtime. */
+export interface NativeModelProfile {
+  version: 1;
+  files: Array<{ path: string; data: string }>;
+}
+
 export interface AgentRunModel {
+  /** Issued only after resolving an authorized stored connection; never an API key substitute. */
+  nativeAuth?: {
+    provider: string;
+    /** Server-only generation of the exact loaded credential; absent disables durable native state. */
+    readonly accountGeneration?: string;
+    profile: NativeModelProfile;
+    /** Compare-and-swap the originating connection; false means newer state won. */
+    persist: (profile: NativeModelProfile) => Promise<boolean>;
+  };
   /** Server-side spending authorization, carried with the resolved credential. */
   callObserver?: ModelCallObserver;
   cacheCapabilities?: CacheCapabilities;
@@ -469,6 +516,8 @@ export type AgentContextStrategy = "current" | "retrieval" | "snapshots" | "cach
 export const DEFAULT_CONTEXT_STRATEGY: AgentContextStrategy = "retrieval";
 
 export interface AgentRunRequest {
+  /** Canonical thread reset/compaction boundary; absent means no durable native reuse. */
+  historyCompactionGeneration?: number;
   /** Awaited producer-side accounting, independent of event-consumer cancellation. */
   onUsage?: (event: Extract<AgentRuntimeEvent, { type: "usage" }>) => void | Promise<void>;
   contextStrategy?: AgentContextStrategy;
@@ -479,6 +528,14 @@ export interface AgentRunRequest {
   runId: string;
   routineId?: string | null;
   sourceMessageId?: string | null;
+  /** Executor-authorized persisted user source for native durable-history canonicalization. */
+  durableNativeHistorySourceMessageId?: string | null;
+  /** Runtime-generated provenance; never supplied by callers or persisted in user history. */
+  durableNativeHistoryProvenance?: {
+    sourceMessageId: string;
+    logicalContentSha256: string;
+    deliveredPromptSha256: string;
+  };
   prompt: string;
   instructions: string;
   history: Array<{

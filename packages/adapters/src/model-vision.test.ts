@@ -68,6 +68,13 @@ describe("model vision gating for computer tools", () => {
     expect(modelAcceptsImageInput("openrouter", "rakazo-test/unknown-future-model")).toBe(false);
   });
 
+  it("uses Antigravity model-family image capabilities without borrowing another provider catalog", () => {
+    expect(modelAcceptsImageInput("google-antigravity", "gemini-3.8-flash")).toBe(true);
+    expect(modelAcceptsImageInput("google-antigravity", "claude-sonnet-4-5")).toBe(true);
+    expect(modelAcceptsImageInput("google-antigravity", "gpt-5.6-sol")).toBe(true);
+    expect(modelAcceptsImageInput("google-antigravity", "text-only-future-model")).toBe(false);
+  });
+
   it("keeps explicit image capability scoped to the selected model", () => {
     const enabled = updateModelImageCapabilities(
       [" vision-model ", "text-model"],

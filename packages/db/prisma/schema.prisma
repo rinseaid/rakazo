@@ -22,6 +22,7 @@ model AiDataConsent {
 }
 
 model User {
+  nativeConversationStates    NativeConversationState[]
   aiDataConsents AiDataConsent[]
   id                          String                       @id
   name                        String
@@ -257,6 +258,7 @@ model Member {
 }
 
 model Space {
+  nativeConversationStates    NativeConversationState[]
   aiDataConsents              AiDataConsent[]
   id                          String                       @id
   organizationId              String
@@ -409,6 +411,7 @@ model SecurityEvent {
 }
 
 model UserModelCredential {
+  nativeConversationStates NativeConversationState[]
   id          String                 @id @default(cuid())
   userId      String
   user        User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -483,6 +486,7 @@ model SpaceVoicePreference {
 }
 
 model Bot {
+  nativeConversationStates NativeConversationState[]
   screenGeneration Int @default(0)
   id                String            @id @default(cuid())
   spaceId           String
@@ -620,6 +624,7 @@ model ChatGroupMember {
 }
 
 model Thread {
+  nativeConversationStates    NativeConversationState[]
   id                          String     @id @default(cuid())
   spaceId                     String
   space                       Space      @relation(fields: [spaceId], references: [id], onDelete: Cascade)
@@ -1186,6 +1191,23 @@ model ComputerRun {
   @@map("computer_runs")
 }
 
+/// Short-lived isolated account operation; retained until remote destruction is confirmed.
+/// Scalar owner ids intentionally survive Space deletion so cleanup cannot lose ownership.
+model AccountOperationHost {
+  id                 String    @id
+  userId             String
+  spaceId            String
+  operationId        String
+  expiresAt          DateTime
+  cleanupRequestedAt DateTime?
+  createdAt          DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([cleanupRequestedAt])
+  @@map("account_operation_hosts")
+}
+
 model ComputerExecutionLease {
   id         String   @id @default(cuid())
   computerId String
@@ -1312,6 +1334,7 @@ model SpaceMemoryConfig {
 }
 
 model Secret {
+  nativeConversationStates NativeConversationState[]
   id                String             @id @default(cuid())
   userId            String
   user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1893,9 +1916,10 @@ model MessagingInstallation {
   ciphertext String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  identities    MessagingIdentity[]
+
   @@unique([provider, workspaceId])
   @@index([spaceId, userId])
-  identities MessagingIdentity[]
   @@map("messaging_installations")
 }
 
@@ -1909,6 +1933,34 @@ model MessagingInstallSession {
   botId String
   bot Bot @relation(fields: [botId], references: [id], onDelete: Cascade)
   expiresAt DateTime
+
   @@index([expiresAt])
   @@map("messaging_install_sessions")
+}
+
+/// Sensitive opaque native state; never served as an Artifact or bot workspace file.
+model NativeConversationState {
+  id                String              @id
+  bindingHash       String
+  userId            String
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  spaceId           String
+  space             Space               @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  threadId          String
+  thread            Thread              @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  botId             String
+  bot               Bot                 @relation(fields: [botId], references: [id], onDelete: Cascade)
+  credentialId      String
+  credential        UserModelCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  accountGeneration String
+  accountSecret     Secret              @relation(fields: [accountGeneration], references: [id], onDelete: Cascade)
+  ciphertext        String?             @db.Text
+  revision          Int                 @default(0)
+  claimHostId       String?
+  updatedAt         DateTime            @updatedAt
+
+  @@index([threadId])
+  @@index([credentialId])
+  @@index([accountGeneration])
+  @@map("native_conversation_states")
 }

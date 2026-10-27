@@ -158,6 +158,8 @@ export function OnboardingPage() {
   const [providerAuth, setProviderAuth] = useState<ProviderAuth | undefined>();
   const [credits, setCredits] = useState(false);
   const [modelId, setModelId] = useState("");
+  const [nativeCredentialId, setNativeCredentialId] = useState<string | null>(null);
+  const [nativeGeneration, setNativeGeneration] = useState<string | null>(null);
   const modelIdRef = useRef(modelId);
   modelIdRef.current = modelId;
   const [apiKey, setApiKey] = useState("");
@@ -204,7 +206,23 @@ export function OnboardingPage() {
   } = useModelOAuthSignIn({
     onClearError: () => setError(null),
     onError: setError,
-    onFinished: async () => {
+    onFinished: async (_controller, credentialId, result) => {
+      if (result.needsModelSelection) {
+        setNativeCredentialId(credentialId);
+        const discovery = await rpc.models.probeCatalog({
+          provider: "google-antigravity",
+          credentialId,
+        });
+        if (!("generation" in discovery) || !discovery.generation) {
+          setNotice(t`Could not discover models for this account. Try again.`);
+          return;
+        }
+        setNativeGeneration(discovery.generation);
+        setCatalog(await rpc.models.list());
+        setModelId("");
+        setNotice(t`Choose a model from this account to continue.`);
+        return;
+      }
       goTo("bot");
     },
   });
@@ -269,9 +287,14 @@ export function OnboardingPage() {
   const canSaveModel = Boolean(
     selected &&
       modelId.trim() &&
+      !selected.placeholder &&
       !oauthPending &&
       cloudflareRoutingReady &&
-      (isOpenAiCompatible ? openAiCompatibleReady : acceptsKey && apiKey.trim()),
+      (isOpenAiCompatible
+        ? openAiCompatibleReady
+        : provider === "google-antigravity" && nativeCredentialId
+          ? Boolean(nativeGeneration && selected.credentialIds?.includes(nativeCredentialId))
+          : acceptsKey && apiKey.trim()),
   );
   const otherModelLabel = t`Other model…`;
   // Subscriptions and the common API providers first; every other provider follows.
@@ -308,8 +331,17 @@ export function OnboardingPage() {
     [providerOptions],
   );
   const modelItems = useMemo(
-    () => modelsForProvider.map((entry) => ({ value: entry.id, label: entry.label })),
-    [modelsForProvider],
+    () =>
+      modelsForProvider
+        .filter(
+          (entry) =>
+            !entry.placeholder &&
+            (provider !== "google-antigravity" ||
+              !nativeCredentialId ||
+              entry.credentialIds?.includes(nativeCredentialId)),
+        )
+        .map((entry) => ({ value: entry.id, label: entry.label })),
+    [modelsForProvider, nativeCredentialId, provider],
   );
   const probeModelItems = useMemo(
     () => [
@@ -353,6 +385,8 @@ export function OnboardingPage() {
     const [nextProvider = option, auth] = option.split(":") as [string, ProviderAuth?];
     cancelOAuthAttempt();
     setProvider(nextProvider);
+    setNativeCredentialId(null);
+    setNativeGeneration(null);
     setProviderAuth(auth);
     setApiKey("");
     setHeaderRows(null);
@@ -500,6 +534,24 @@ export function OnboardingPage() {
           apiKey: apiKey.trim() || undefined,
           label: selected?.providerName ?? provider,
         });
+      } else if (provider === "google-antigravity" && nativeCredentialId && nativeGeneration) {
+        if (
+          selected?.placeholder ||
+          !selected?.credentialIds?.includes(nativeCredentialId) ||
+          selected.id !== modelId
+        )
+          return;
+        await rpc.models.connect({
+          provider,
+          credentialId: nativeCredentialId,
+          nativeGeneration,
+          modelId: selected.id,
+          label: selected.providerName ?? provider,
+          thinkingLevel: clampCatalogThinkingLevel(
+            thinkingLevel,
+            selected.thinkingLevels,
+          ) as ThinkingLevel | null,
+        });
       } else if (apiKey) {
         await rpc.models.connect({
           provider,
@@ -527,9 +579,11 @@ export function OnboardingPage() {
 
   function beginSelectedSubscriptionSignIn() {
     if (!selected?.id) return;
+    const deferModelSelection = provider === "google-antigravity" && selected.placeholder === true;
     void startSubscriptionSignIn({
       provider: selected.provider,
-      modelId: selected.id,
+      ...(!deferModelSelection ? { modelId: selected.id } : {}),
+      ...(deferModelSelection ? { deferModelSelection: true } : {}),
       label: selected.providerName ?? selected.provider,
     });
   }
@@ -839,14 +893,20 @@ export function OnboardingPage() {
                                 >
                                   {new URL(oauth.verificationUri).hostname}
                                 </a>
-                                , then paste the code here.
+                                {oauth.callbackInput === "url"
+                                  ? ", then paste the complete callback URL here."
+                                  : ", then paste the code here."}
                               </Trans>
                             </p>
                             <div className="mt-3 flex items-center gap-2">
                               <Input
                                 value={pasteCode}
                                 onChange={(e) => setPasteCode(e.target.value)}
-                                aria-label={t`Authorization code`}
+                                aria-label={
+                                  oauth.callbackInput === "url"
+                                    ? t`Authorization callback URL`
+                                    : t`Authorization code`
+                                }
                                 autoComplete="off"
                                 spellCheck={false}
                               />
@@ -1039,13 +1099,14 @@ export function OnboardingPage() {
                   </>
                 ) : null}
                 {/* The model is chosen once the account is connected; sign-in uses the default. */}
-                {!isOpenAiCompatible && acceptsKey && apiKey.trim() ? (
+                {!isOpenAiCompatible &&
+                (Boolean(acceptsKey && apiKey.trim()) || Boolean(nativeCredentialId)) ? (
                   <div className="mt-6 block text-sm text-foreground">
                     <span className="font-medium">
                       <Trans>Model</Trans>
                     </span>
                     <Select
-                      value={selected?.id ?? modelId}
+                      value={modelId}
                       onValueChange={(value) => {
                         if (typeof value !== "string" || !value) return;
                         if (value === modelId) return;
@@ -1061,11 +1122,19 @@ export function OnboardingPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
-                          {modelsForProvider.map((entry) => (
-                            <SelectItem key={`${entry.provider}:${entry.id}`} value={entry.id}>
-                              {entry.label}
-                            </SelectItem>
-                          ))}
+                          {modelsForProvider
+                            .filter(
+                              (entry) =>
+                                !entry.placeholder &&
+                                (provider !== "google-antigravity" ||
+                                  !nativeCredentialId ||
+                                  entry.credentialIds?.includes(nativeCredentialId)),
+                            )
+                            .map((entry) => (
+                              <SelectItem key={`${entry.provider}:${entry.id}`} value={entry.id}>
+                                {entry.label}
+                              </SelectItem>
+                            ))}
                         </SelectGroup>
                       </SelectContent>
                     </Select>

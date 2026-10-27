@@ -75,6 +75,11 @@ const choiceOf = (option: RoleModelOption): ModelRoleChoice => ({
   provider: option.provider,
   modelId: option.id,
   ...(option.credentialId ? { credentialId: option.credentialId } : {}),
+  ...(option.credentialId && option.provider === "google-antigravity"
+    ? {
+        nativeGeneration: option.nativeGenerationsByCredential?.[option.credentialId],
+      }
+    : {}),
 });
 
 /** One ordered list per model purpose: the first row runs, the rest take over in order. */
@@ -168,6 +173,7 @@ export function ModelRoleSettings({
       }),
       providerName: choice.credentialId ? choice.connectionName : providerLabel(choice.provider),
       ...(choice.credentialId ? { credentialId: choice.credentialId } : {}),
+      ...(choice.nativeGeneration ? { nativeGeneration: choice.nativeGeneration } : {}),
     }),
   );
   // A pinned row runs on its connection; others on the provider's newest.
@@ -191,10 +197,44 @@ export function ModelRoleSettings({
   // does not lock them; moves and removals use the rows on screen and wait for it.
   const pickerLocked = state.stale || !settings;
 
+  function withCurrentNativeGeneration(choice: ModelRoleChoice | null): ModelRoleChoice | null {
+    if (!choice || choice.provider !== "google-antigravity") return choice;
+    const entry = state.catalog.find(
+      (candidate) => candidate.provider === choice.provider && candidate.id === choice.modelId,
+    );
+    const credentialId =
+      choice.credentialId ??
+      credentials.find(
+        (credential) =>
+          credential.provider === choice.provider && entry?.credentialIds?.includes(credential.id),
+      )?.id;
+    const nativeGeneration =
+      (credentialId && entry?.nativeGenerationsByCredential?.[credentialId]) ??
+      entry?.nativeGeneration;
+    return nativeGeneration
+      ? {
+          ...choice,
+          ...(credentialId ? { credentialId } : {}),
+          nativeGeneration,
+        }
+      : choice;
+  }
+
   async function save(
     update: (current: ModelRoleSettingsValue) => Partial<ModelRoleSettingsValue>,
   ) {
-    await controller.save(update);
+    await controller.save((current) => {
+      const patch = update(current);
+      return {
+        ...patch,
+        ...(patch.primary !== undefined
+          ? { primary: withCurrentNativeGeneration(patch.primary) }
+          : {}),
+        ...(patch.backups !== undefined
+          ? { backups: patch.backups.map((choice) => withCurrentNativeGeneration(choice)!) }
+          : {}),
+      };
+    });
     onChanged?.();
   }
   // The first row is the primary; moving a fallback there promotes it. When the primary
@@ -208,7 +248,15 @@ export function ModelRoleSettings({
       const list = current.primary ? [current.primary, ...current.backups] : current.backups;
       // A pick made from rows that were still catching up may already be in the loaded
       // list; it keeps its place rather than moving and displacing the main model.
-      if (list.some((item) => sameChoice(item, choice))) return {};
+      const existing = list.findIndex((item) => sameChoice(item, choice));
+      if (existing >= 0) {
+        // Discovery generations are validation metadata, not role identity. Refresh
+        // the stored token in place so the same account/model never becomes a duplicate.
+        return listPatch(
+          current,
+          list.map((item, index) => (index === existing ? choice : item)),
+        );
+      }
       const at = slot === "add" ? -1 : list.findIndex((item) => sameChoice(item, slot));
       return listPatch(
         current,
@@ -465,5 +513,9 @@ function listPatch(
   current: ModelRoleSettingsValue,
   list: ModelRoleChoice[],
 ): Partial<ModelRoleSettingsValue> {
-  return current.primary ? { primary: list[0] ?? null, backups: list.slice(1) } : { backups: list };
+  if (!current.primary) return { backups: list };
+  const primary = list[0] ?? null;
+  return primary && sameChoice(primary, current.primary)
+    ? { primary, backups: list.slice(1) }
+    : { primary, backups: list.slice(1) };
 }

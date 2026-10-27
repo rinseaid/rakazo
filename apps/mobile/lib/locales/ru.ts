@@ -273,7 +273,13 @@ export const RU_MESSAGES: Record<string, string> = {
   Attach: "Вложение",
   "Attach file": "Прикрепить файл",
   Authorize: "Авторизовать",
+  "Authorization callback URL": "URL обратного вызова авторизации",
   "Authorization code": "Код авторизации",
+  "Choose a current model from this account to finish setup.":
+    "Чтобы завершить настройку, выберите актуальную модель этого аккаунта.",
+  "Choose a model from this account to finish setup.":
+    "Чтобы завершить настройку, выберите модель этого аккаунта.",
+  "Then paste the complete callback URL here.": "Затем вставьте сюда полный URL обратного вызова.",
   "Authorization timed out. Please try again.":
     "Время авторизации истекло. Пожалуйста, попробуйте еще раз.",
   "Authorize {name}": "Авторизовать {name}",

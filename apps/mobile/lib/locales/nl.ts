@@ -448,7 +448,13 @@ export const NL_MESSAGES: Record<string, string> = {
   "Take control": "Controle overnemen",
   "You have control": "Jij hebt de controle",
   "Active model": "Actief model",
+  "Authorization callback URL": "URL van autorisatiecallback",
   "Authorization code": "Autorisatiecode",
+  "Choose a current model from this account to finish setup.":
+    "Kies een actueel model van dit account om de configuratie af te ronden.",
+  "Choose a model from this account to finish setup.":
+    "Kies een model van dit account om de configuratie af te ronden.",
+  "Then paste the complete callback URL here.": "Plak hierna de volledige callback-URL.",
   "Configured by deployment": "Geconfigureerd door de implementatie",
   "Use your own key": "Gebruik je eigen sleutel",
   "Uses this server's own {source} credentials to access {provider}.":

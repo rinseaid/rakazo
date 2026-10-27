@@ -9,6 +9,7 @@ import {
   MAX_ENABLED_MODEL_IDS,
   modelOutputLeavesInputRoom,
 } from "@rakazo/contracts";
+import { isNativeModelProvider } from "./model-native-auth.js";
 import { enabledOpenAiCompatibleModelIds } from "./model-selection.js";
 import { modelIdSupportsImages, updateModelImageCapabilities } from "./model-vision.js";
 import { normalizeOpenAiCompatibleBaseUrl } from "./openai-compatible-url.js";
@@ -65,7 +66,42 @@ export function buildModelConnectPlaintext(
   previousPlaintext?: string,
   options?: BuildModelConnectOptions,
 ): string {
-  const previous = tryParseModelSecret(previousPlaintext);
+  // API-key input is not an alternate import route for serialized account credentials.
+  if (input.apiKey?.trim().startsWith("{")) {
+    const key = input.apiKey.trim();
+    const parsed = parseModelSecret(key);
+    let bareProfile = false;
+    try {
+      const value: unknown = JSON.parse(key);
+      bareProfile = Boolean(
+        value && typeof value === "object" && "version" in value && "files" in value,
+      );
+    } catch {
+      /* Unrecognized legacy JSON-like keys remain literal API keys. */
+    }
+    if (parsed.kind !== "api_key" || parsed.key !== key || bareProfile)
+      throw new Error("Account credentials cannot be used as API keys. Use sign-in instead.");
+  }
+  const previous =
+    previousPlaintext && /"kind"\s*:\s*"native"/.test(previousPlaintext)
+      ? parseModelSecret(previousPlaintext)
+      : tryParseModelSecret(previousPlaintext);
+  if (previous?.kind === "native") {
+    if (previous.provider !== input.provider)
+      throw new Error("Native account profile does not match this provider.");
+    if (input.apiKey?.trim())
+      throw new Error("Native account connections require sign-in, not an API key.");
+    return serializeModelSecret({
+      ...previous,
+      maxTokens: connectMaxTokens(input.maxTokens, previous.maxTokens),
+      ...(input.contextWindow !== undefined ? { contextWindow: input.contextWindow } : {}),
+      ...(input.cacheCapabilities !== undefined
+        ? { cacheCapabilities: input.cacheCapabilities }
+        : {}),
+    });
+  }
+  if (isNativeModelProvider(input.provider))
+    throw new Error("Native account sign-in is required for this provider.");
   const inherited = previous?.kind === "api_key" ? previous : undefined;
   const cacheCapabilities = input.cacheCapabilities ?? inherited?.cacheCapabilities;
   const contextWindow = input.contextWindow ?? inherited?.contextWindow;

@@ -321,10 +321,16 @@ export const appContract = {
       .input(
         z.object({
           provider: z.string().trim().min(1),
-          apiKey: z.string().trim().min(8),
+          apiKey: z.string().trim().min(8).optional(),
+          credentialId: z.string().trim().min(1).optional(),
         }),
       )
-      .output(z.object({ models: z.array(z.string()) })),
+      .output(
+        z.union([
+          z.object({ models: z.array(z.string()), generation: z.string().min(16).max(128) }),
+          z.object({ models: z.array(z.string()) }),
+        ]),
+      ),
     beginOAuth: oc
       .input(
         z.object({
@@ -333,16 +339,19 @@ export const appContract = {
           /** Signs an existing connection in again; null adds another, as connect does. */
           credentialId: ModelConnectionTargetSchema,
           modelId: z.string().optional(),
+          nativeGeneration: z.string().min(16).max(128).optional(),
           thinkingLevel: ThinkingLevelSchema.nullable().optional(),
           makeDefault: z.boolean().optional(),
           scope: SettingsScopeSchema.optional(),
           /** No loopback listener (web, mobile): the provider shows a code to paste instead. */
           codePage: z.boolean().optional(),
+          /** Saves a native account first; a real model is selected afterward. */
+          deferModelSelection: z.boolean().optional(),
         }),
       )
       .output(ModelOAuthBeginSchema),
     submitOAuthCode: oc
-      .input(z.object({ loginId: z.string(), code: z.string().trim().min(1).max(8_192) }))
+      .input(z.object({ loginId: z.string(), code: z.string().trim().min(1).max(16_384) }))
       .output(z.object({ ok: z.literal(true) })),
     completeOAuth: oc
       .input(z.object({ loginId: z.string() }))
@@ -353,7 +362,11 @@ export const appContract = {
           z.object({ status: z.literal("error"), error: z.string() }),
         ]),
       ),
-    finishOAuth: oc.input(z.object({ loginId: z.string() })).output(ModelCredentialSchema),
+    finishOAuth: oc.input(z.object({ loginId: z.string() })).output(
+      ModelCredentialSchema.extend({
+        needsModelSelection: z.literal(true).optional(),
+      }),
+    ),
     cancelOAuth: oc
       .input(z.object({ loginId: z.string() }))
       .output(z.object({ ok: z.literal(true) })),
@@ -362,6 +375,8 @@ export const appContract = {
         z.object({
           provider: z.string(),
           modelId: z.string(),
+          credentialId: Id.optional(),
+          nativeGeneration: z.string().min(16).max(128).optional(),
           thinkingLevel: ThinkingLevelSchema.nullable().optional(),
         }),
       )

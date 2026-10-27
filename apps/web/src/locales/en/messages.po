@@ -6019,3 +6019,31 @@ msgstr "Your voice provider is out of credit."
 #: src/lib/user-error.ts
 msgid "Your voice provider key was rejected."
 msgstr "Your voice provider key was rejected."
+
+#: src/pages/ModelSettingsOverlay.tsx
+msgid "Choose a model from this account"
+msgstr "Choose a model from this account"
+
+#: src/pages/model-settings/use-model-settings.ts
+msgid "Choose a model from this account to finish setup."
+msgstr "Choose a model from this account to finish setup."
+
+#: src/pages/ModelSettingsOverlay.tsx
+msgid "Sign in to discover models for this account."
+msgstr "Sign in to discover models for this account."
+
+#: src/pages/model-settings/use-model-settings.ts
+msgid "Could not discover models for this account. Try again."
+msgstr "Could not discover models for this account. Try again."
+
+#: src/pages/Onboarding.tsx
+msgid "Choose a model from this account to continue."
+msgstr "Choose a model from this account to continue."
+
+#: src/pages/model-settings/connection-controls.tsx
+msgid "Sign in at <0>{0}</0>, then paste the complete callback URL here."
+msgstr "Sign in at <0>{0}</0>, then paste the complete callback URL here."
+
+#: src/pages/model-settings/connection-controls.tsx
+msgid "Authorization callback URL"
+msgstr "Authorization callback URL"

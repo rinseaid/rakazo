@@ -181,6 +181,51 @@ describe("shared role editor", () => {
     expect(rows()).toEqual(["ChatOpenRouter", "MiniOpenRouter"]);
     expect(api.role.mock.calls.length).toBe(loads + 1);
   });
+  it("refreshes a native role generation in place without treating it as a second choice", async () => {
+    const nativeCredential = {
+      id: "native-account",
+      provider: "google-antigravity",
+      label: "Google Antigravity",
+      authKind: "native" as const,
+      hasKey: false,
+      isDefault: false,
+    };
+    const generation = "generation-2";
+    saved = {
+      primary: {
+        provider: "google-antigravity",
+        modelId: "native-model",
+        credentialId: nativeCredential.id,
+        nativeGeneration: "generation-1",
+      },
+      backups: [],
+    };
+    api.forRole.mockResolvedValue([
+      {
+        provider: "google-antigravity",
+        id: "native-model",
+        label: "Gemini",
+        providerName: "Google Antigravity",
+        billing: "",
+        credentialIds: [nativeCredential.id],
+        nativeGenerationsByCredential: { [nativeCredential.id]: generation },
+      },
+    ]);
+    await render({ credentials: [...credentials, nativeCredential] });
+    await pick("Change Gemini", "Gemini");
+    expect(api.setRole).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        primary: expect.objectContaining({
+          provider: "google-antigravity",
+          modelId: "native-model",
+          credentialId: nativeCredential.id,
+          nativeGeneration: generation,
+        }),
+      }),
+      expect.anything(),
+    );
+    expect(saved.backups).toEqual([]);
+  });
   it("uses the same add, order and remove controls for main and approval fallbacks", async () => {
     await render();
     await pick("Add fallback", "Chat");

@@ -398,7 +398,14 @@ describe("ensureMcpPackage", () => {
       execFileSync("npm", ["pack", "--silent", "--pack-destination", work], {
         cwd: fixture,
         encoding: "utf8",
-        env: { ...process.env, NPM_CONFIG_CACHE: join(work, "npm-cache") },
+        env: {
+          ...process.env,
+          NPM_CONFIG_CACHE: join(work, "npm-cache"),
+          // Packing is part of this offline fixture too, not just the install below.
+          NPM_CONFIG_OFFLINE: "true",
+          NPM_CONFIG_IGNORE_SCRIPTS: "true",
+          NPM_CONFIG_UPDATE_NOTIFIER: "false",
+        },
       }).trim(),
     );
 

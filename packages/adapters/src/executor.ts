@@ -124,12 +124,19 @@ import {
   stableJsonValue,
   toolEffectIdempotencyKey,
 } from "@rakazo/core/node/approval-effect-key";
-import type { McpServer, Prisma, PrismaClient, ThreadEvents } from "@rakazo/db";
+import type {
+  McpServer,
+  NativeConversationCommitCandidate,
+  Prisma,
+  PrismaClient,
+  ThreadEvents,
+} from "@rakazo/db";
 import {
   appendEventInTransaction,
   countUnreadInboxChats,
   createSpaceForMember,
   createThreadMessageInTransaction,
+  discardNativeConversationCandidate,
   dropRunTurnCheckpoint,
   effectiveMemoryScope,
   findAutoReviewPreference,
@@ -341,6 +348,8 @@ import {
   HostedModelCreditsRequiredError,
   hostedModelCreditObserver,
 } from "./model-credit-observer.js";
+import { isNativeModelProvider } from "./model-native-auth.js";
+import { nativeModelAuth } from "./model-native-credential.js";
 import type { EffectiveModelRole } from "./model-roles.js";
 import {
   effectiveModelRole,
@@ -365,6 +374,12 @@ import {
   modelAcceptsImageInput,
   modelIdSupportsImages,
 } from "./model-vision.js";
+import type { NativeConversationRunCandidate } from "./native-conversation-candidate.js";
+import {
+  bindNativeConversationCandidate,
+  discardNativeConversationRunCandidate,
+  registerNativeConversationCandidateSink,
+} from "./native-conversation-candidate.js";
 import { nativeShellCommandArgv } from "./native-shell.js";
 import { assertAllowedOpenAiCompatibleUrl } from "./openai-compatible-url.js";
 import type { CodexLiveCatalog } from "./pi-codex-catalog.js";
@@ -3163,7 +3178,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
       scope,
       provider,
       modelId,
-      { hostedProvider, credentialId },
+      { hostedProvider, credentialId, trustSavedNativeModel: true },
     );
     if (validationError) throw new Error(validationError);
     const credential = await findConnectedModelCredential(
@@ -3194,6 +3209,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
       id: modelId,
       ...(credentialId ? { connectionId: credentialId } : {}),
       apiKey: resolved.oauth ? undefined : resolved.apiKey,
+      nativeAuth: resolved.nativeAuth,
       callObserver: resolved.callObserver,
       ...cloudflareRunFields(resolved),
       baseUrl: resolved.baseUrl,
@@ -3290,6 +3306,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
         provider,
         id,
         apiKey: resolved.oauth ? undefined : resolved.apiKey,
+        nativeAuth: resolved.nativeAuth,
         callObserver: resolved.callObserver,
         ...cloudflareRunFields(resolved),
         baseUrl: resolved.baseUrl,
@@ -4015,6 +4032,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
           userId: run.userId,
           botId: bot.id,
           runId,
+          runLease: { owner: workerId, fence },
           screenLeaseId: screenLeaseIdForRun(computerLease, runId, fence),
           signal: runAbortController.signal,
           ...connectedContext(connectedPlugins),
@@ -4342,6 +4360,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
           runModelId,
           resolved.acceptsImages,
         );
+        if (currentTurnImages?.length && !modelSeesImages) {
+          await failRunBeforeModel(MODEL_CANNOT_SEE_MESSAGE);
+          return;
+        }
         const acceptsImages = deps.runtime.describe().capabilities.scripted || modelSeesImages;
         const groupContext = thread.groupId
           ? await loadGroupContext(deps.prisma, thread.groupId, {
@@ -5484,6 +5506,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
                         runtime: deps.runtime,
                         checker,
                         apiKey: judgeKey.oauth ? undefined : judgeKey.apiKey,
+                        nativeAuth: judgeKey.nativeAuth,
                         callObserver: judgeKey.callObserver,
                         accountId: judgeKey.accountId,
                         gatewayId: judgeKey.gatewayId,
@@ -8083,212 +8106,241 @@ export function createRunExecutor(deps: ExecutorDeps) {
         );
         // Provider kind and model id only: custom endpoints are identified by kind, never host.
         const activeModel = { "model.provider": runModelProvider, "model.id": runModelId };
+        let nativeCandidate: NativeConversationRunCandidate | undefined;
+        let nativeCandidateAmbiguous = false;
+        let nativeConversationCandidate: NativeConversationCommitCandidate | undefined;
 
         try {
           if (checkpointLoadError) throw checkpointLoadError;
-          const runtimeEvents = deps.runtime.run(
-            {
-              botId: bot.id,
-              threadId: thread.id,
-              runId,
-              routineId: run.routineId,
-              sourceMessageId: run.sourceMessageId,
-              onUsage: async (event) => {
-                await recordUsage(deps.prisma, event, {
-                  spaceId: run.spaceId,
-                  botId: bot.id,
-                  userId: run.userId,
-                  runId,
-                  parentRunId: runId,
-                  operationId: runId,
-                });
-              },
-              prompt,
-              // Keep an explicit executor override, but let the runtime select
-              // cache-aware context for connections declaring a cache window.
-              contextStrategy: deps.contextStrategy,
-              instructions: userTurnInstructions({
-                botInstructions: runIdentityInstruction(bot, run.trigger),
-                groupContext,
-                messagingContext,
-                redactedMemoryContext: memoryContext
-                  ? redactSecrets(memoryContext, runSecrets)
-                  : undefined,
-                redactedScratchpadContext: scratchpadContext
-                  ? redactSecrets(scratchpadContext, runSecrets)
-                  : undefined,
-                redactedTicketContext: ticketContext
-                  ? redactSecrets(ticketContext, runSecrets)
-                  : undefined,
-                hasHistoricalContext: historicalContext.length > 0,
-                historyRetrievalEnabled: contextStrategy !== "current",
-                computerInstruction,
-                pageBrowserAllowed,
-                taskCatalogInstruction,
-                workspaceInstruction,
-                agentEnvironmentInstruction,
-                botDirectory,
-                pluginLine,
-                agentSkillsLine,
-                taughtSkillsLine,
-                replyGuidance: runReplyGuidance(run.trigger),
-                disabledBuiltinTools,
-                offeredFleetTools: offeredFleetTools(builtins),
-              })
-                .filter((instruction): instruction is string => Boolean(instruction))
-                .join("\n\n"),
-              history: runtimeHistory,
-              currentTurnImages,
-              tools,
-              model: {
-                provider: runModelProvider,
-                id: runModelId,
-                ...(credential ? { connectionId: credential.id } : {}),
-                apiKey: resolved.oauth ? undefined : resolved.apiKey,
-                callObserver: resolved.callObserver,
-                ...cloudflareRunFields(resolved),
-                baseUrl: resolved.baseUrl,
-                headers: resolved.headers,
-                allowPrivateEndpoint: resolved.allowPrivateEndpoint,
-                cacheCapabilities: resolved.cacheCapabilities,
-                contextWindow: resolved.contextWindow,
+          const runtimeRequest: AgentRunRequest = {
+            botId: bot.id,
+            threadId: thread.id,
+            runId,
+            routineId: run.routineId,
+            sourceMessageId: run.sourceMessageId,
+            durableNativeHistorySourceMessageId:
+              (run.trigger === "user" || run.trigger === "follow_up") &&
+              currentTurnMessage?.id === run.sourceMessageId
+                ? run.sourceMessageId
+                : null,
+            historyCompactionGeneration: thread.historyCompactionGeneration,
+            onUsage: async (event) => {
+              await recordUsage(deps.prisma, event, {
+                spaceId: run.spaceId,
+                botId: bot.id,
+                userId: run.userId,
+                runId,
+                parentRunId: runId,
+                operationId: runId,
+              });
+            },
+            prompt,
+            // Keep an explicit executor override, but let the runtime select
+            // cache-aware context for connections declaring a cache window.
+            contextStrategy: deps.contextStrategy,
+            instructions: userTurnInstructions({
+              botInstructions: runIdentityInstruction(bot, run.trigger),
+              groupContext,
+              messagingContext,
+              redactedMemoryContext: memoryContext
+                ? redactSecrets(memoryContext, runSecrets)
+                : undefined,
+              redactedScratchpadContext: scratchpadContext
+                ? redactSecrets(scratchpadContext, runSecrets)
+                : undefined,
+              redactedTicketContext: ticketContext
+                ? redactSecrets(ticketContext, runSecrets)
+                : undefined,
+              hasHistoricalContext: historicalContext.length > 0,
+              historyRetrievalEnabled: contextStrategy !== "current",
+              computerInstruction,
+              pageBrowserAllowed,
+              taskCatalogInstruction,
+              workspaceInstruction,
+              agentEnvironmentInstruction,
+              botDirectory,
+              pluginLine,
+              agentSkillsLine,
+              taughtSkillsLine,
+              replyGuidance: runReplyGuidance(run.trigger),
+              disabledBuiltinTools,
+              offeredFleetTools: offeredFleetTools(builtins),
+            })
+              .filter((instruction): instruction is string => Boolean(instruction))
+              .join("\n\n"),
+            history: runtimeHistory,
+            currentTurnImages,
+            tools,
+            model: {
+              provider: runModelProvider,
+              id: runModelId,
+              ...(credential ? { connectionId: credential.id } : {}),
+              apiKey: resolved.oauth ? undefined : resolved.apiKey,
+              nativeAuth: resolved.nativeAuth,
+              callObserver: resolved.callObserver,
+              ...cloudflareRunFields(resolved),
+              baseUrl: resolved.baseUrl,
+              headers: resolved.headers,
+              allowPrivateEndpoint: resolved.allowPrivateEndpoint,
+              cacheCapabilities: resolved.cacheCapabilities,
+              contextWindow: resolved.contextWindow,
 
-                reasoning: resolved.reasoning,
-                maxTokens: resolved.maxTokens,
-                acceptsImages: resolved.acceptsImages,
-                maxImagesPerPrompt: resolved.maxImagesPerPrompt,
-                thinkingLevel: thinkingLevel ?? resolved.thinkingLevel ?? null,
-                oauth: resolved.oauth
-                  ? {
-                      credential: resolved.oauth,
-                      persist: resolved.persistOAuth,
-                      retire: resolved.retireOAuth,
-                    }
-                  : undefined,
-              },
-              fallbackModels: fallbackModels.map(({ provider, modelId, credentialId }) => ({
-                provider,
-                id: modelId,
-                ...(credentialId ? { connectionId: credentialId } : {}),
-              })),
-              resolveFallbackModel: fallbackModelKeys.size
-                ? async (provider, modelId, connectionId) => {
-                    const key = fallbackKey(provider, modelId, connectionId);
-                    if (!fallbackModelKeys.has(key))
-                      throw new Error("Backup model is not selected");
-                    return resolveConnectedModel(
-                      { userId: run.userId, spaceId: run.spaceId },
-                      provider,
-                      modelId,
-                      (values) => runSecrets.push(...values),
-                      true,
-                      fallbackModels.find(
-                        (candidate) =>
-                          fallbackKey(
-                            candidate.provider,
-                            candidate.modelId,
-                            candidate.credentialId,
-                          ) === key,
-                      )?.thinkingLevel ?? null,
-                      connectionId,
-                    );
+              reasoning: resolved.reasoning,
+              maxTokens: resolved.maxTokens,
+              acceptsImages: resolved.acceptsImages,
+              maxImagesPerPrompt: resolved.maxImagesPerPrompt,
+              thinkingLevel: thinkingLevel ?? resolved.thinkingLevel ?? null,
+              oauth: resolved.oauth
+                ? {
+                    credential: resolved.oauth,
+                    persist: resolved.persistOAuth,
+                    retire: resolved.retireOAuth,
                   }
                 : undefined,
-              onModelChange: async (provider, modelId) => {
-                if (!fallbackModelIds.has(fallbackKey(provider, modelId))) {
-                  throw new Error("Backup model is not selected");
+            },
+            fallbackModels: fallbackModels.map(({ provider, modelId, credentialId }) => ({
+              provider,
+              id: modelId,
+              ...(credentialId ? { connectionId: credentialId } : {}),
+            })),
+            resolveFallbackModel: fallbackModelKeys.size
+              ? async (provider, modelId, connectionId) => {
+                  const key = fallbackKey(provider, modelId, connectionId);
+                  if (!fallbackModelKeys.has(key)) throw new Error("Backup model is not selected");
+                  return resolveConnectedModel(
+                    { userId: run.userId, spaceId: run.spaceId },
+                    provider,
+                    modelId,
+                    (values) => runSecrets.push(...values),
+                    true,
+                    fallbackModels.find(
+                      (candidate) =>
+                        fallbackKey(
+                          candidate.provider,
+                          candidate.modelId,
+                          candidate.credentialId,
+                        ) === key,
+                    )?.thinkingLevel ?? null,
+                    connectionId,
+                  );
                 }
-                const updated = await deps.prisma.run.updateMany({
-                  where: {
-                    id: runId,
-                    status: "running",
-                    leaseOwner: workerId,
-                    leaseFence: fence,
-                  },
-                  data: { modelProvider: provider, modelId },
-                });
-                if (updated.count !== 1) {
-                  throw new Error("Run lease was lost before the backup model could be used");
-                }
-                activeModel["model.provider"] = provider;
-                activeModel["model.id"] = modelId;
-              },
-              resumeFromCheckpoint: takeoverResume?.checkpoint,
-              turnCheckpoint,
-              onCheckpoint: async (capture, executionId) => {
-                pendingTurnCheckpoints.set(executionId, capture);
-              },
-              resumeToolResult: {
-                content: [{ type: "text", text: takeoverResume?.promptNote ?? taskPrompt }],
-              },
-              script,
-              allowSilentEmpty: allowSilentEmptyRun,
-              emptyResponseText,
-              executeTool: scripted ? undefined : applyTool,
-              resolveModel: scripted
-                ? undefined
-                : (provider, modelId) =>
-                    resolveConnectedModel(run, provider, modelId, (values) =>
-                      runSecrets.push(...values),
-                    ),
-              onToolCompleted: (completion) => {
-                if (restoredPendingEffect?.executionId === completion.executionId)
-                  restoredPendingEffect = undefined;
-                if (!completion.paused) pendingTurnCheckpoints.delete(completion.executionId);
-                return appendToolCompletionAudit(
-                  deps,
-                  {
-                    spaceId: run.spaceId,
-                    threadId: thread.id,
-                    botId: bot.id,
-                    runId,
-                  },
-                  completion,
-                  runSecrets,
-                );
-              },
-              claimSteering: async (seenIds) => {
-                const steering = await deps.events.claimSteering({
+              : undefined,
+            onModelChange: async (provider, modelId) => {
+              if (nativeCandidate) discardNativeConversationRunCandidate(nativeCandidate);
+              nativeCandidate = undefined;
+              nativeCandidateAmbiguous = true;
+              if (!fallbackModelIds.has(fallbackKey(provider, modelId))) {
+                throw new Error("Backup model is not selected");
+              }
+              const updated = await deps.prisma.run.updateMany({
+                where: {
+                  id: runId,
+                  status: "running",
+                  leaseOwner: workerId,
+                  leaseFence: fence,
+                },
+                data: { modelProvider: provider, modelId },
+              });
+              if (updated.count !== 1) {
+                throw new Error("Run lease was lost before the backup model could be used");
+              }
+              activeModel["model.provider"] = provider;
+              activeModel["model.id"] = modelId;
+            },
+            resumeFromCheckpoint: takeoverResume?.checkpoint,
+            turnCheckpoint,
+            onCheckpoint: async (capture, executionId) => {
+              pendingTurnCheckpoints.set(executionId, capture);
+            },
+            resumeToolResult: {
+              content: [{ type: "text", text: takeoverResume?.promptNote ?? taskPrompt }],
+            },
+            script,
+            allowSilentEmpty: allowSilentEmptyRun,
+            emptyResponseText,
+            executeTool: scripted ? undefined : applyTool,
+            resolveModel: scripted
+              ? undefined
+              : (provider, modelId) =>
+                  resolveConnectedModel(run, provider, modelId, (values) =>
+                    runSecrets.push(...values),
+                  ),
+            onToolCompleted: (completion) => {
+              if (restoredPendingEffect?.executionId === completion.executionId)
+                restoredPendingEffect = undefined;
+              if (!completion.paused) pendingTurnCheckpoints.delete(completion.executionId);
+              return appendToolCompletionAudit(
+                deps,
+                {
+                  spaceId: run.spaceId,
                   threadId: thread.id,
                   botId: bot.id,
                   runId,
-                  leaseOwner: workerId,
-                  leaseFence: fence,
-                  seenIds,
-                });
-                return Promise.all(
-                  steering.map(async (item) => {
-                    const { images, files, unavailableInstruction } =
-                      await settleSteeringAttachmentLoads(
-                        loadCurrentTurnImages(deps, item.blocks, context),
-                        deps.artifacts
-                          ? listCurrentTurnFiles(deps, item.blocks, context)
-                          : Promise.resolve([]),
-                        item.blocks,
-                        context.signal,
-                      );
-                    if (files.length) pendingTurnFiles.push(item.blocks);
-                    const filesInstruction = currentTurnFilesInstruction(files);
-                    return {
-                      id: item.id,
-                      messageId: item.messageId,
-                      historyText: item.text,
-                      text: [
-                        await loadReplyContext(deps.prisma, thread.id, item.messageId),
-                        item.text,
-                        filesInstruction,
-                        unavailableInstruction,
-                      ]
-                        .filter(Boolean)
-                        .join("\n\n"),
-                      images,
-                    };
-                  }),
-                );
-              },
+                },
+                completion,
+                runSecrets,
+              );
             },
-            context,
-          );
+            claimSteering: async (seenIds) => {
+              const steering = await deps.events.claimSteering({
+                threadId: thread.id,
+                botId: bot.id,
+                runId,
+                leaseOwner: workerId,
+                leaseFence: fence,
+                seenIds,
+              });
+              return Promise.all(
+                steering.map(async (item) => {
+                  const { images, files, unavailableInstruction } =
+                    await settleSteeringAttachmentLoads(
+                      loadCurrentTurnImages(deps, item.blocks, context),
+                      deps.artifacts
+                        ? listCurrentTurnFiles(deps, item.blocks, context)
+                        : Promise.resolve([]),
+                      item.blocks,
+                      context.signal,
+                    );
+                  if (files.length) pendingTurnFiles.push(item.blocks);
+                  const filesInstruction = currentTurnFilesInstruction(files);
+                  return {
+                    id: item.id,
+                    messageId: item.messageId,
+                    historyText: item.text,
+                    text: [
+                      await loadReplyContext(deps.prisma, thread.id, item.messageId),
+                      item.text,
+                      filesInstruction,
+                      unavailableInstruction,
+                    ]
+                      .filter(Boolean)
+                      .join("\n\n"),
+                    images,
+                  };
+                }),
+              );
+            },
+          };
+          registerNativeConversationCandidateSink(runtimeRequest, (candidate) => {
+            if (nativeCandidate || nativeCandidateAmbiguous) {
+              if (nativeCandidate) discardNativeConversationRunCandidate(nativeCandidate);
+              discardNativeConversationRunCandidate(candidate);
+              nativeCandidate = undefined;
+              nativeCandidateAmbiguous = true;
+              return;
+            }
+            if (
+              candidate.provider !== runModelProvider ||
+              candidate.modelId !== runModelId ||
+              candidate.sourceMessageId !== run.sourceMessageId
+            ) {
+              discardNativeConversationRunCandidate(candidate);
+              nativeCandidateAmbiguous = true;
+              return;
+            }
+            nativeCandidate = candidate;
+          });
+          const runtimeEvents = deps.runtime.run(runtimeRequest, context);
           for await (const event of withRuntimeCleanup(runtimeEvents, runAbortController)) {
             if (approvalPausePending) return;
             if (!leaseValid) return;
@@ -8790,6 +8842,28 @@ export function createRunExecutor(deps: ExecutorDeps) {
               ? botMessageOutcomeFromMidTurn(text, midTurnUserTexts)
               : null;
           await settleRunningHelpers();
+          const persistedAssistantHistory = blocksToAgentHistoryText(blocks);
+          if (
+            nativeCandidate &&
+            !nativeCandidateAmbiguous &&
+            (run.trigger === "user" || run.trigger === "follow_up") &&
+            !run.routineId &&
+            !handedOff &&
+            !isBackgroundRunTrigger(run.trigger) &&
+            !publishedMidTurnUserMessage &&
+            !publishedTerminalSubagent &&
+            silentReply.assembled.trim() &&
+            text.trim() &&
+            persistedAssistantHistory.trim()
+          ) {
+            try {
+              nativeConversationCandidate = bindNativeConversationCandidate(nativeCandidate, [
+                persistedAssistantHistory,
+              ]);
+            } catch {
+              // Optional private state reuse must never prevent a valid user reply.
+            }
+          }
           const completed = await deps.events.finalizeRun({
             spaceId: run.spaceId,
             threadId: thread.id,
@@ -8806,6 +8880,7 @@ export function createRunExecutor(deps: ExecutorDeps) {
               text,
               peerMessage?.repliesToRequest === true,
             ),
+            ...(nativeConversationCandidate ? { nativeConversationCandidate } : {}),
           });
           if (!completed) return;
           stopHeartbeatAfterCompletion();
@@ -8961,6 +9036,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
               threadId: thread.id,
             });
           }
+        } finally {
+          if (nativeCandidate) discardNativeConversationRunCandidate(nativeCandidate);
+          if (nativeConversationCandidate)
+            discardNativeConversationCandidate(nativeConversationCandidate);
         }
       } catch (setupError) {
         const computerBusy = setupError instanceof ComputerBusyError;
@@ -10563,7 +10642,7 @@ async function resolveModelKey(...args: Parameters<typeof resolveModelKeyMateria
     material.apiKey === undefined && (provider === "openrouter" || provider === "scripted")
       ? process.env.OPENROUTER_API_KEY
       : undefined;
-  if (!material.apiKey?.trim() && !runtimeKey?.trim() && !keyless) {
+  if (!material.nativeAuth && !material.apiKey?.trim() && !runtimeKey?.trim() && !keyless) {
     throw new UnavailableModelForAuthError(MISSING_MODEL_MESSAGE);
   }
   const callObserver =
@@ -10600,6 +10679,7 @@ async function resolveModelKeyMaterial(
   thinkingLevel?: AgentRunRequest["model"]["thinkingLevel"];
   acceptsImages?: boolean;
   maxImagesPerPrompt?: number;
+  nativeAuth?: AgentRunRequest["model"]["nativeAuth"];
   oauth?: AgentModelOAuthCredential;
   persistOAuth?: (credential: AgentModelOAuthCredential) => Promise<void>;
   retireOAuth?: (
@@ -10615,6 +10695,10 @@ async function resolveModelKeyMaterial(
         where: { id: credential.secretId, userId, spaceId: null },
       });
       if (!row) {
+        if (isNativeModelProvider(provider))
+          throw new UnavailableModelForAuthError(
+            "Native account sign-in is required for this provider.",
+          );
         if (await modelCreditBillingEnabled(deps))
           throw new Error("Connect that model provider again.");
         if (requireStoredSecret) throw new Error("Backup model credential is no longer available");
@@ -10624,6 +10708,8 @@ async function resolveModelKeyMaterial(
         cloudflareProviderEnv({ provider });
         return { apiKey: deploymentKeyFor(deps, provider), redact: [] };
       }
+      if (credential.provider !== provider)
+        throw new UnavailableModelForAuthError("Connection provider mismatch");
       const plaintext = await deps.secretStore.load(row.ciphertext, row.id);
       registerSecrets?.(secretValuesToRedact(parseModelSecret(plaintext)));
       const persist = persistStoredModelSecret(
@@ -10676,6 +10762,28 @@ async function resolveModelKeyMaterial(
       }
       resolved ??= await resolveAuth();
       assertCompatibleModelEnabled(credential, resolved.secret, modelId);
+      if (resolved.secret.kind === "native") {
+        // The saved selection was discovered when configured. ACP checks that
+        // the live agent still offers it when opening this session.
+        const native = resolved.secret;
+        return {
+          nativeAuth: nativeModelAuth({
+            prisma: deps.prisma,
+            secretStore: deps.secretStore,
+            userId,
+            spaceId,
+            credentialId: credential.id,
+            secretId: row.id,
+            ciphertext: row.ciphertext,
+            secret: native,
+            registerSecrets,
+          }),
+          maxTokens: native.maxTokens,
+          contextWindow: native.contextWindow,
+          cacheCapabilities: native.cacheCapabilities,
+          redact: secretValuesToRedact(native),
+        };
+      }
       const oauth = resolved.secret.kind === "oauth" ? resolved.secret.credential : undefined;
       const baseUrl =
         resolved.secret.kind === "openai_compatible" ? resolved.secret.baseUrl : undefined;
@@ -10763,6 +10871,8 @@ async function resolveModelKeyMaterial(
       };
     });
   }
+  if (isNativeModelProvider(provider))
+    throw new UnavailableModelForAuthError("Native account sign-in is required for this provider.");
   if (requireStoredSecret) throw new Error("Backup model credential is no longer available");
   cloudflareProviderEnv({ provider });
   return { apiKey: deploymentKeyFor(deps, provider), redact: [] };

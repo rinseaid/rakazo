@@ -56,7 +56,10 @@ function listPatch(current: Settings, list: ModelRoleChoice[]): Partial<Settings
   if (!current.primary) return { backups: list };
   const primary = list[0] ?? null;
   return primary && sameChoice(primary, current.primary)
-    ? { backups: list.slice(1) }
+    ? {
+        ...(primary.nativeGeneration !== current.primary.nativeGeneration ? { primary } : {}),
+        backups: list.slice(1),
+      }
     : { primary, backups: list.slice(1) };
 }
 
@@ -140,7 +143,11 @@ export function ModelRoleSettings({
     );
   const options = connectedBackupOptions(state.catalog, credentials);
   const optionFor = (choice: ModelRoleChoice) =>
-    options.find((option) => backupChoiceKey(option) === backupChoiceKey(choice));
+    options.find((option) =>
+      choice.credentialId
+        ? modelRoleChoiceKey(option) === modelRoleChoiceKey(choice)
+        : backupChoiceKey(option) === backupChoiceKey(choice),
+    );
   const modelLabel = (choice: ModelRoleChoice) =>
     entryFor(choice)?.label ?? optionFor(choice)?.label ?? choice.modelId;
   const providerName = (choice: ModelRoleChoice) =>
@@ -194,7 +201,12 @@ export function ModelRoleSettings({
     save((current) => {
       const list = current.primary ? [current.primary, ...current.backups] : current.backups;
       if (slot === "add")
-        return listPatch(current, [...list.filter((item) => !sameChoice(item, choice)), choice]);
+        return listPatch(
+          current,
+          list.some((item) => sameChoice(item, choice))
+            ? list.map((item) => (sameChoice(item, choice) ? choice : item))
+            : [...list, choice],
+        );
       return listPatch(
         current,
         list
@@ -275,6 +287,7 @@ export function ModelRoleSettings({
             providerLabel: option.connectionName,
             provider: option.provider,
             modelId: option.modelId,
+            ...(option.nativeGeneration ? { nativeGeneration: option.nativeGeneration } : {}),
           })),
       ],
       connectChoices: narrowed
@@ -317,6 +330,7 @@ export function ModelRoleSettings({
           provider: option.provider,
           modelId: option.modelId,
           ...(option.credentialId ? { credentialId: option.credentialId } : {}),
+          ...(choice.nativeGeneration ? { nativeGeneration: choice.nativeGeneration } : {}),
         };
         if (!current || !sameChoice(current, picked)) void fill(slot, picked);
       },

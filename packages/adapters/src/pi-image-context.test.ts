@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { ContextBudgetError, estimateContextTokens, selectContext } from "./context-selection.js";
-import { estimatePiImageTokens } from "./pi-image-context.js";
+import { estimateGoogleAcpImageTokens, estimatePiImageTokens } from "./pi-image-context.js";
 
 describe("Pi image context planning", () => {
   it.each([
@@ -72,6 +72,18 @@ describe("Pi image context planning", () => {
         mimeType: "image/gif",
       }),
     ).toBe(2048);
+    const manyFrames = Buffer.concat([
+      gif.subarray(0, -1),
+      ...Array.from({ length: 20 }, () => frame),
+      gif.subarray(-1),
+    ]);
+    const manyFrameImage = {
+      type: "image",
+      data: manyFrames.toString("base64"),
+      mimeType: "image/gif",
+    };
+    expect(estimatePiImageTokens(manyFrameImage)).toBe(21 * 1024);
+    expect(estimateGoogleAcpImageTokens(manyFrameImage)).toBe(8 * 1024);
     expect(
       estimatePiImageTokens({
         type: "image",

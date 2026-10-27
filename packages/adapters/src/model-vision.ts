@@ -20,6 +20,10 @@ export const IMAGE_RETURNING_COMPUTER_TOOLS = new Set([
 
 export const MODEL_CANNOT_SEE_MESSAGE = "This bot's model cannot see; pick a vision-capable model.";
 
+export function googleAntigravityModelAcceptsImages(modelId: string): boolean {
+  return /^(?:gemini-|claude-(?:3|4|sonnet|opus|haiku)|gpt-)/i.test(modelId);
+}
+
 /** Return whether a model id is explicitly enabled for image input on a connection. */
 export function modelIdSupportsImages(
   modelIds: readonly string[] | undefined,
@@ -94,16 +98,24 @@ export function modelAcceptsImageInput(
   const resolved = resolveModelRefForVisionCheck(provider, modelId);
   if (!resolved.provider || !resolved.id) return false;
   if (acceptsImages && resolved.provider === OPENAI_COMPATIBLE_PROVIDER_ID) return true;
+  if (
+    resolved.provider === "google-antigravity" &&
+    googleAntigravityModelAcceptsImages(resolved.id)
+  )
+    return true;
 
   const models = catalogModels();
   let model = models.getModel(resolved.provider, resolved.id);
   if (
     !model &&
     resolved.provider !== "openrouter" &&
+    resolved.provider !== "google-antigravity" &&
     resolved.provider !== OPENAI_COMPATIBLE_PROVIDER_ID
   ) {
     model = models.getModel("openrouter", resolved.id);
   }
+  // Provider model IDs are not interchangeable. In particular, Antigravity's
+  // Gemini IDs must not inherit OpenRouter's separately declared image support.
   model ??= liveModelSibling(models, resolved.provider, resolved.id);
   return Boolean(model?.input.includes("image"));
 }

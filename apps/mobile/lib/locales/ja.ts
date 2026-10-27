@@ -440,7 +440,14 @@ export const JA_MESSAGES: Record<string, string> = {
   "Take control": "操作を引き継ぐ",
   "You have control": "あなたが操作中",
   "Active model": "使用中のモデル",
+  "Authorization callback URL": "認証コールバック URL",
   "Authorization code": "認証コード",
+  "Choose a current model from this account to finish setup.":
+    "設定を完了するには、このアカウントで現在利用できるモデルを選択してください。",
+  "Choose a model from this account to finish setup.":
+    "設定を完了するには、このアカウントのモデルを選択してください。",
+  "Then paste the complete callback URL here.":
+    "次に、コールバック URL 全体をここに貼り付けてください。",
   "Configured by deployment": "デプロイ設定で構成済み",
   "Use your own key": "自分のキーを使用",
   "Uses this server's own {source} credentials to access {provider}.":

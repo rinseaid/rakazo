@@ -9,6 +9,7 @@ import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import type {
   ModelCredentialFailedState,
   ModelCredentialRetireReason,
+  NativeModelProfile,
   SecretStore,
 } from "@rakazo/adapter-kit";
 import type {
@@ -29,12 +30,19 @@ import {
 import type { PrismaClient } from "@rakazo/db";
 import { runAsSystem, runAsTenant } from "@rakazo/db";
 import { getLogger } from "@rakazo/logging";
+import {
+  assertNativeModelProvider,
+  isNativeModelProvider,
+  nativeModelProviderEnabled,
+  parseNativeModelProfile,
+} from "./model-native-auth.js";
 import { createManualAnthropicOAuthLogin } from "./pi-anthropic-oauth.js";
 
 export const CHATGPT_OAUTH_PROVIDER = "openai-codex";
 export const COPILOT_OAUTH_PROVIDER = "github-copilot";
 export const XAI_OAUTH_PROVIDER = "xai";
 export const ANTHROPIC_OAUTH_PROVIDER = "anthropic";
+export const GOOGLE_ANTIGRAVITY_OAUTH_PROVIDER = "google-antigravity";
 
 export const SUBSCRIPTION_SIGN_IN_PROVIDERS: Record<
   string,
@@ -75,6 +83,9 @@ export const SUBSCRIPTION_SIGN_IN_PROVIDERS: Record<
 
 const MIN_OAUTH_VALIDITY_MS = 5 * 60 * 1000;
 const SIGN_IN_START_WAIT_MS = 30_000;
+// Native sign-in must cold-start an isolated account host before the ACP runtime
+// can emit its authorization URL. Keep the shorter bound for subscription flows.
+const NATIVE_SIGN_IN_START_WAIT_MS = 90_000;
 /** How long a sign-in that hands back a code stays open, on any API process. */
 const PASTED_CODE_TTL_SECONDS = 15 * 60;
 /** Bound on a detached credential refresh so it cannot pin the shared lock. */
@@ -289,6 +300,12 @@ function modelLimits(value: Record<string, unknown>): StoredModelLimits {
 
 export type StoredModelSecret =
   | ({
+      kind: "native";
+      provider: string;
+      profile: NativeModelProfile;
+      maxTokens?: number;
+    } & StoredModelLimits)
+  | ({
       kind: "api_key";
       key: string;
       maxTokens?: number;
@@ -312,7 +329,6 @@ export type StoredModelSecret =
 
 export type PiOAuthConnected = {
   status: "connected";
-  credential: OAuthCredential;
   provider: string;
   /** The connection this sign-in renews; null adds one; undefined is an older app's sign-in. */
   credentialId?: string | null;
@@ -322,8 +338,17 @@ export type PiOAuthConnected = {
   /** Which copy of the member's models makeDefault sets; omitted means the one that applies. */
   settingsScope?: SettingsScope;
   label?: string;
+  deferModelSelection?: boolean;
+  nativeGeneration?: string;
   signal: AbortSignal;
-};
+} & (
+  | { authKind?: "oauth"; credential: OAuthCredential; nativeSecret?: never }
+  | {
+      authKind: "native";
+      nativeSecret: Extract<StoredModelSecret, { kind: "native" }>;
+      credential?: never;
+    }
+);
 
 export type PiOAuthComplete =
   | { status: "pending" }
@@ -349,6 +374,16 @@ type LoginFn = (
 
 type SignInActor = { userId: string; spaceId: string };
 
+/** A hosted process owns this login; it cannot be reconstructed from an OAuth verifier. */
+export type NativeModelLoginRunner = (input: {
+  provider: string;
+  loginId: string;
+  actor: SignInActor;
+  credentialId?: string | null;
+  signal: AbortSignal;
+  interaction: AuthInteraction;
+}) => Promise<Extract<StoredModelSecret, { kind: "native" }>>;
+
 type BeginInput = SignInActor & {
   provider: string;
   credentialId?: string | null;
@@ -357,6 +392,8 @@ type BeginInput = SignInActor & {
   makeDefault?: boolean;
   settingsScope?: SettingsScope;
   label?: string;
+  deferModelSelection?: boolean;
+  nativeGeneration?: string;
   /** The client has no loopback listener, so the provider shows the code to paste. */
   codePage?: boolean;
   signal?: AbortSignal;
@@ -386,9 +423,12 @@ type Session = {
   makeDefault?: boolean;
   settingsScope?: SettingsScope;
   label?: string;
+  deferModelSelection?: boolean;
+  nativeGeneration?: string;
   abort: AbortController;
   state: SessionState;
   credential?: OAuthCredential;
+  nativeSecret?: Extract<StoredModelSecret, { kind: "native" }>;
   error?: string;
   finishing?: Promise<void>;
   // auth-url flows: resolves the runtime's "paste the redirect URL" prompt.
@@ -449,8 +489,21 @@ export function parseModelSecret(plaintext: string): StoredModelSecret {
   try {
     parsed = JSON.parse(trimmed) as Record<string, unknown>;
   } catch {
-    // Treat malformed JSON as a literal API key.
+    if (/"kind"\s*:\s*"native"/.test(trimmed)) throw new Error(CORRUPT_MODEL_SECRET_MESSAGE);
     return { kind: "api_key", key: plaintext };
+  }
+  if (parsed.kind === "native") {
+    if (typeof parsed.provider !== "string") throw new Error(CORRUPT_MODEL_SECRET_MESSAGE);
+    assertNativeModelProvider(parsed.provider, parsed.provider);
+    return {
+      kind: "native",
+      provider: parsed.provider,
+      profile: parseNativeModelProfile(parsed.profile),
+      ...(parsedMaxTokens(parsed.maxTokens) !== undefined
+        ? { maxTokens: parsedMaxTokens(parsed.maxTokens) }
+        : {}),
+      ...modelLimits(parsed),
+    };
   }
   if (parsed.kind === "openai_compatible") {
     if (typeof parsed.baseUrl !== "string" || !parsed.baseUrl.trim()) {
@@ -528,6 +581,16 @@ export function parseModelSecret(plaintext: string): StoredModelSecret {
 }
 
 export function serializeModelSecret(secret: StoredModelSecret): string {
+  if (secret.kind === "native") {
+    assertNativeModelProvider(secret.provider, secret.provider);
+    return JSON.stringify({
+      kind: "native",
+      provider: secret.provider,
+      profile: parseNativeModelProfile(secret.profile),
+      ...(secret.maxTokens !== undefined ? { maxTokens: secret.maxTokens } : {}),
+      ...modelLimits(secret as unknown as Record<string, unknown>),
+    });
+  }
   if (secret.kind === "oauth") {
     if (secret.maxTokens === undefined) return JSON.stringify(secret.credential);
     return JSON.stringify({
@@ -576,6 +639,24 @@ export function serializeModelSecret(secret: StoredModelSecret): string {
 const MIN_REDACTED_HEADER_VALUE_LENGTH = 8;
 
 export function secretValuesToRedact(secret: StoredModelSecret): string[] {
+  if (secret.kind === "native") {
+    const values = new Set<string>();
+    const collect = (value: unknown): void => {
+      if (typeof value === "string") {
+        if (value) values.add(value);
+      } else if (Array.isArray(value)) value.forEach(collect);
+      else if (value && typeof value === "object") Object.values(value).forEach(collect);
+    };
+    for (const file of secret.profile.files) {
+      values.add(file.data);
+      try {
+        collect(JSON.parse(file.data));
+      } catch {
+        /* Opaque non-JSON files are redacted whole. */
+      }
+    }
+    return [...values];
+  }
   if (secret.kind === "api_key") return secret.key ? [secret.key] : [];
   if (secret.kind === "openai_compatible")
     return [
@@ -664,8 +745,16 @@ export async function resolveModelAuth(
   plaintext: string,
   provider: string,
   opts?: ResolveModelOpts,
-): Promise<{ secret: StoredModelSecret; apiKey: string }> {
+): Promise<{ secret: StoredModelSecret; apiKey?: string }> {
   const parsed = parseModelSecret(plaintext);
+  if (parsed.kind === "native") {
+    assertNativeModelProvider(parsed.provider, provider);
+    if (!nativeModelProviderEnabled(provider))
+      throw new Error("Google Antigravity is not enabled on this server.");
+    return { secret: parsed };
+  }
+  if (isNativeModelProvider(provider))
+    throw new Error("Native account sign-in is required for this provider.");
   if (parsed.kind === "api_key") return { secret: parsed, apiKey: parsed.key };
   if (parsed.kind === "openai_compatible") {
     return { secret: parsed, apiKey: parsed.apiKey ?? "" };
@@ -760,6 +849,8 @@ export async function resolveModelApiKey(
   opts?: ResolveModelOpts,
 ): Promise<string> {
   const resolved = await resolveModelAuth(plaintext, provider, opts);
+  if (resolved.secret.kind === "native" || resolved.apiKey === undefined)
+    throw new Error("Native account profiles cannot be used as API keys.");
   return resolved.apiKey;
 }
 
@@ -894,13 +985,16 @@ export class PiOAuthLogins {
   constructor(
     private readonly loginFn: LoginFn = defaultLogin,
     private readonly handoff?: PiOAuthHandoffStore,
+    private readonly nativeLogin?: NativeModelLoginRunner,
   ) {}
 
   async begin(input: BeginInput): Promise<PiOAuthBegin> {
     // The pasted code can reach another API process (a deploy replaces this one), which
     // then needs this verifier to exchange it.
     const verifier =
-      this.handoff && SUBSCRIPTION_SIGN_IN_PROVIDERS[input.provider]?.mode === "auth-url"
+      this.handoff &&
+      !isNativeModelProvider(input.provider) &&
+      SUBSCRIPTION_SIGN_IN_PROVIDERS[input.provider]?.mode === "auth-url"
         ? randomBytes(32).toString("base64url")
         : undefined;
     const started = await this.start(input, randomUUID(), verifier);
@@ -915,7 +1009,20 @@ export class PiOAuthLogins {
     loginId: string,
     verifier: string | undefined,
   ): Promise<PiOAuthBegin> {
-    if (!SUBSCRIPTION_SIGN_IN_PROVIDERS[input.provider]) {
+    const native = isNativeModelProvider(input.provider);
+    if (native && !nativeModelProviderEnabled(input.provider)) {
+      throw new Error("Google Antigravity sign-in is not enabled on this server.");
+    }
+    if (input.deferModelSelection && (!native || input.modelId)) {
+      throw new Error("Deferred model selection is only available for native account sign-in.");
+    }
+    if (native && !input.deferModelSelection) {
+      throw new Error("Sign in first, then choose a discovered model for this account.");
+    }
+    if (native && input.modelId === "__google-antigravity-model-required__") {
+      throw new Error("Choose a real discovered model after signing in.");
+    }
+    if (native ? !this.nativeLogin : !SUBSCRIPTION_SIGN_IN_PROVIDERS[input.provider]) {
       throw new Error(
         "In-app subscription sign-in is only available for ChatGPT Plus/Pro, Claude Pro/Max, GitHub Copilot, and SuperGrok.",
       );
@@ -944,6 +1051,8 @@ export class PiOAuthLogins {
         makeDefault: input.makeDefault,
         settingsScope: input.settingsScope,
         label: input.label,
+        deferModelSelection: input.deferModelSelection,
+        nativeGeneration: input.nativeGeneration,
         abort,
         state: "pending",
         handedOff: verifier !== undefined,
@@ -951,84 +1060,107 @@ export class PiOAuthLogins {
 
       const signInStarted = deferred<PiOAuthStarted>();
 
-      const done = this.loginFn(
-        input.provider,
-        "oauth",
-        {
-          signal: abort.signal,
-          async prompt(prompt) {
-            if (prompt.type === "select") {
-              const option = prompt.options.find((entry) => entry.id === "device_code");
-              if (!option) {
-                throw new Error("Device-code sign-in is not available for this provider.");
-              }
-              return option.id;
+      const interaction: AuthInteraction = {
+        signal: abort.signal,
+        async prompt(prompt) {
+          if (prompt.type === "select") {
+            const option = prompt.options.find((entry) => entry.id === "device_code");
+            if (!option) {
+              throw new Error("Device-code sign-in is not available for this provider.");
             }
-            if (prompt.type === "manual_code") {
-              return new Promise<string>((resolve, reject) => {
-                const signals = [abort.signal, prompt.signal].filter(
-                  (signal): signal is AbortSignal => signal !== undefined,
-                );
-                const removeAbortListeners = () => {
-                  for (const signal of signals) signal.removeEventListener("abort", onAbort);
-                };
-                const onAbort = (event: Event) => {
-                  removeAbortListeners();
-                  session.submitCode = undefined;
-                  const signal = event.currentTarget as AbortSignal;
-                  reject(signal.reason ?? new Error("Sign-in cancelled."));
-                };
-                session.submitCode = (code) => {
-                  removeAbortListeners();
-                  session.submitCode = undefined;
-                  resolve(code);
-                };
-                const aborted = signals.find((signal) => signal.aborted);
-                if (aborted) {
-                  removeAbortListeners();
-                  session.submitCode = undefined;
-                  reject(aborted.reason ?? new Error("Sign-in cancelled."));
-                } else {
-                  for (const signal of signals)
-                    signal.addEventListener("abort", onAbort, { once: true });
-                }
-              });
-            }
-            // Copilot asks for a GitHub Enterprise host first. Blank is github.com.
-            if (prompt.type === "text") return "";
-            throw new Error("Unexpected subscription login prompt.");
-          },
-          notify(event) {
-            if (event.type === "device_code") {
-              signInStarted.resolve({
-                mode: "device-code",
-                userCode: event.userCode,
-                verificationUri: httpsAuthorizationUrl(event.verificationUri),
-                expiresInSeconds: event.expiresInSeconds ?? 15 * 60,
-              });
-            }
-            if (event.type === "auth_url") {
-              signInStarted.resolve({
-                mode: "auth-url",
-                verificationUri: httpsAuthorizationUrl(event.url),
-                expiresInSeconds: PASTED_CODE_TTL_SECONDS,
-              });
-            }
-          },
-        },
-        { codePage: input.codePage, verifier },
-      )
-        .then((credential) => {
-          if (!isOAuthCredential(credential)) {
-            throw new Error("Subscription sign-in did not return an OAuth credential.");
+            return option.id;
           }
-          session.credential = credential;
+          if (prompt.type === "manual_code") {
+            return new Promise<string>((resolve, reject) => {
+              const signals = [abort.signal, prompt.signal].filter(
+                (signal): signal is AbortSignal => signal !== undefined,
+              );
+              const removeAbortListeners = () => {
+                for (const signal of signals) signal.removeEventListener("abort", onAbort);
+              };
+              const onAbort = (event: Event) => {
+                removeAbortListeners();
+                session.submitCode = undefined;
+                const signal = event.currentTarget as AbortSignal;
+                reject(signal.reason ?? new Error("Sign-in cancelled."));
+              };
+              session.submitCode = (code) => {
+                removeAbortListeners();
+                session.submitCode = undefined;
+                resolve(code);
+              };
+              const aborted = signals.find((signal) => signal.aborted);
+              if (aborted) {
+                removeAbortListeners();
+                session.submitCode = undefined;
+                reject(aborted.reason ?? new Error("Sign-in cancelled."));
+              } else {
+                for (const signal of signals)
+                  signal.addEventListener("abort", onAbort, { once: true });
+              }
+            });
+          }
+          // Copilot asks for a GitHub Enterprise host first. Blank is github.com.
+          if (prompt.type === "text") return "";
+          throw new Error("Unexpected subscription login prompt.");
+        },
+        notify(event) {
+          if (event.type === "device_code") {
+            signInStarted.resolve({
+              mode: "device-code",
+              userCode: event.userCode,
+              verificationUri: httpsAuthorizationUrl(event.verificationUri),
+              expiresInSeconds: event.expiresInSeconds ?? 15 * 60,
+            });
+          }
+          if (event.type === "auth_url") {
+            signInStarted.resolve({
+              mode: "auth-url",
+              verificationUri: httpsAuthorizationUrl(event.url),
+              expiresInSeconds: PASTED_CODE_TTL_SECONDS,
+              ...(native ? { callbackInput: "url" as const } : {}),
+            });
+          }
+        },
+      };
+      // Defer invocation so synchronous runner failures follow the same cancellation path.
+      const done = Promise.resolve()
+        .then(async () => {
+          throwIfAborted(abort.signal);
+          if (native) {
+            const result = await this.nativeLogin!({
+              provider: input.provider,
+              loginId,
+              actor: { userId: input.userId, spaceId: input.spaceId },
+              credentialId: input.credentialId,
+              signal: abort.signal,
+              interaction,
+            });
+            throwIfAborted(abort.signal);
+            const secret = parseModelSecret(serializeModelSecret(result));
+            if (secret.kind !== "native")
+              throw new Error("Native sign-in returned invalid account state.");
+            assertNativeModelProvider(secret.provider, input.provider);
+            session.nativeSecret = secret;
+          } else {
+            const credential = await this.loginFn(input.provider, "oauth", interaction, {
+              codePage: input.codePage,
+              verifier,
+            });
+            throwIfAborted(abort.signal);
+            if (!isOAuthCredential(credential))
+              throw new Error("Subscription sign-in did not return an OAuth credential.");
+            session.credential = credential;
+          }
           session.state = "ready";
-          return credential;
         })
         .catch((error) => {
-          session.error = error instanceof Error ? error.message : "Subscription sign-in failed.";
-          signInStarted.reject(error instanceof Error ? error : new Error(session.error));
+          session.error = native
+            ? "Native account sign-in failed. Try again."
+            : error instanceof Error
+              ? error.message
+              : "Subscription sign-in failed.";
+          signInStarted.reject(new Error(session.error));
           throw error;
         });
 
@@ -1051,9 +1183,10 @@ export class PiOAuthLogins {
     const { abort, abortFromRequest, signInStarted, session } = prepared;
 
     try {
+      const startWaitMs = native ? NATIVE_SIGN_IN_START_WAIT_MS : SIGN_IN_START_WAIT_MS;
       const started = await Promise.race([
         signInStarted,
-        sleep(SIGN_IN_START_WAIT_MS).then(() => {
+        sleep(startWaitMs).then(() => {
           throw new Error("Subscription sign-in did not start. Try again.");
         }),
       ]);
@@ -1190,7 +1323,11 @@ export class PiOAuthLogins {
       getLogger().error("model sign-in hand-off unreadable", error);
       return undefined;
     }
-    if (typeof stored.verifier !== "string" || typeof stored.provider !== "string") {
+    if (
+      typeof stored.verifier !== "string" ||
+      typeof stored.provider !== "string" ||
+      isNativeModelProvider(stored.provider)
+    ) {
       return undefined;
     }
     const { verifier, ...input } = stored;
@@ -1227,10 +1364,13 @@ export class PiOAuthLogins {
       return { status: "error", error: session.error };
     }
     if (session.state === "finalizing") return { status: "pending" };
-    if (session.credential) {
+    if (session.credential || session.nativeSecret) {
+      const auth = session.nativeSecret
+        ? { authKind: "native" as const, nativeSecret: session.nativeSecret }
+        : { credential: session.credential! };
       return {
         status: "connected",
-        credential: session.credential,
+        ...auth,
         provider: session.provider,
         credentialId: session.credentialId,
         modelId: session.modelId,
@@ -1238,6 +1378,8 @@ export class PiOAuthLogins {
         makeDefault: session.makeDefault,
         settingsScope: session.settingsScope,
         label: session.label,
+        deferModelSelection: session.deferModelSelection,
+        nativeGeneration: session.nativeGeneration,
         signal: session.abort.signal,
       };
     }

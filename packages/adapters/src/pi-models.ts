@@ -2,6 +2,11 @@ import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import type { ModelOAuthSignInMode, ThinkingLevel } from "@rakazo/contracts";
 import { canonicalPiProviderId } from "@rakazo/contracts";
+import {
+  GOOGLE_ANTIGRAVITY_PLACEHOLDER_MODEL_ID,
+  GOOGLE_ANTIGRAVITY_PROVIDER_ID,
+  nativeModelProviderEnabled,
+} from "./model-native-auth.js";
 import { LOCAL_PROVIDER_ID, registerLocalProvider } from "./pi-local-provider.js";
 import { applyPiModelCompatibility } from "./pi-model-compat.js";
 import { loadProviderOAuth, SUBSCRIPTION_SIGN_IN_PROVIDERS } from "./pi-oauth.js";
@@ -186,7 +191,23 @@ function pinnedCatalogProbeBaseUrl(
 
 export function listPiCatalog(): PiCatalogEntry[] {
   cachedCatalog ??= buildPiCatalog();
-  return cachedCatalog;
+  if (!nativeModelProviderEnabled(GOOGLE_ANTIGRAVITY_PROVIDER_ID)) return cachedCatalog;
+  return [
+    ...cachedCatalog,
+    {
+      provider: GOOGLE_ANTIGRAVITY_PROVIDER_ID,
+      providerName: "Google Antigravity",
+      id: GOOGLE_ANTIGRAVITY_PLACEHOLDER_MODEL_ID,
+      label: "Choose a model after sign-in",
+      billing: "Uses your Google Antigravity account. Rakazo does not pay.",
+      auth: "oauth",
+      oauthLabel: "Sign in with Google",
+      authHint: "Google Antigravity account",
+      subscription: true,
+      signIn: "auth-url",
+      placeholder: true,
+    },
+  ];
 }
 
 let cachedCatalog: PiCatalogEntry[] | undefined;

@@ -1,0 +1,26 @@
+# Optional runtime image candidate; build and qualify it before production use.
+# The vendor archive is supplied explicitly and verified; never downloaded at run time.
+ARG COMPUTER_IMAGE=rakazo/computer:local
+FROM node:22-bookworm-slim@sha256:d649c27dae7ba0137b3cef5dd75baa422c08dc3d9e3fc0c23dfb172dc3cc6436 AS node-runtime
+FROM ${COMPUTER_IMAGE}
+ARG TARGETARCH
+USER root
+COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
+COPY generated/rakazo-acp-host.mjs /usr/local/lib/rakazo-acp-host.mjs
+COPY generated/rakazo-acp-tool-gate.mjs /usr/local/lib/rakazo-acp-tool-gate.mjs
+COPY generated/node_modules/@img /usr/local/lib/node_modules/@img
+# Build-time provenance is baked into the pinned image, never derived from a
+# user's runtime profile. The unprivileged native host cannot replace these files.
+RUN /usr/local/bin/node --input-type=module -e 'import{readFileSync,writeFileSync}from"node:fs";import{createHash}from"node:crypto";const hash=p=>createHash("sha256").update(readFileSync(p)).digest("hex");writeFileSync("/usr/local/lib/rakazo-acp-gate-manifest.json",JSON.stringify({version:1,runtimeVersion:"1.4.3",interpreterSha256:hash("/usr/local/bin/node"),scriptSha256:hash("/usr/local/lib/rakazo-acp-tool-gate.mjs")}));' \
+  && chmod 644 /usr/local/lib/rakazo-acp-tool-gate.mjs /usr/local/lib/rakazo-acp-gate-manifest.json
+COPY acp-host-launcher /usr/local/bin/rakazo-acp-host
+COPY vendor/antigravity-acp-1.4.3-linux-x86_64.zip /tmp/antigravity-acp.zip
+RUN test "$TARGETARCH" = amd64 \
+  && echo '0634ce5306ba92c932945455e7a83fda78e2d99c33fa8aa6ee0566206a382714  /tmp/antigravity-acp.zip' | sha256sum -c - \
+  && mkdir -p /opt/rakazo/antigravity-acp \
+  && unzip -q /tmp/antigravity-acp.zip -d /opt/rakazo/antigravity-acp \
+  && chmod 755 /usr/local/bin/rakazo-acp-host /opt/rakazo/antigravity-acp/agy_acp_server.par /opt/rakazo/antigravity-acp/localharness_external \
+  && rm /tmp/antigravity-acp.zip
+# Invalid operation reaches the helper's own validation only if its bundled imports load.
+RUN set +e; /usr/local/bin/node /usr/local/lib/rakazo-acp-host.mjs --operation invalid </dev/null; status=$?; test "$status" -eq 125
+USER 1000:1000

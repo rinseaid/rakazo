@@ -1250,7 +1250,44 @@ describe("PiOAuthLogins", () => {
     await flushMicrotasks();
     const done = await logins.complete(started.loginId, { userId: "u", spaceId: "w" });
     expect(done.status).toBe("connected");
-    if (done.status === "connected") expect(done.credential.access).toBe("claude-access");
+    if (done.status === "connected") expect(done.credential?.access).toBe("claude-access");
+  });
+
+  it("allows a cold native account host to emit its authorization URL", async () => {
+    vi.useFakeTimers();
+    vi.stubEnv("RAKAZO_GOOGLE_ANTIGRAVITY_ENABLED", "true");
+    let runnerStarted = false;
+    const logins = new PiOAuthLogins(undefined, undefined, async ({ interaction }) => {
+      runnerStarted = true;
+      await new Promise<void>((resolve) => setTimeout(resolve, 35_000));
+      interaction.notify({
+        type: "auth_url",
+        url: "https://accounts.google.com/o/oauth2/v2/auth?state=fixture",
+        instructions: "open",
+      });
+      await new Promise<never>((_resolve, reject) => {
+        interaction.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
+          once: true,
+        });
+      });
+      throw new Error("unreachable");
+    });
+    try {
+      const pending = logins.begin({
+        userId: "u",
+        spaceId: "w",
+        provider: "google-antigravity",
+        deferModelSelection: true,
+      });
+      await flushMicrotasks();
+      expect(runnerStarted).toBe(true);
+      await vi.advanceTimersByTimeAsync(35_000);
+      await expect(pending).resolves.toMatchObject({ mode: "auth-url" });
+    } finally {
+      logins.abortAll();
+      vi.unstubAllEnvs();
+      vi.useRealTimers();
+    }
   });
 
   it("passes the client's code-page choice to the provider login", async () => {
@@ -1453,11 +1490,11 @@ describe("PiOAuthLogins", () => {
       provider: CHATGPT_OAUTH_PROVIDER,
       modelId: "gpt-5.4",
     });
-    if (done.status === "connected") expect(done.credential.access).toBe("live-access");
+    if (done.status === "connected") expect(done.credential?.access).toBe("live-access");
     const persisted = await logins.finish(
       started.loginId,
       { userId: "u", spaceId: "w" },
-      async (result) => result.credential.access,
+      async (result) => result.credential?.access,
     );
     expect(persisted).toEqual({ status: "connected", value: "live-access" });
     const gone = await logins.complete(started.loginId, { userId: "u", spaceId: "w" });
@@ -1629,7 +1666,7 @@ describe("PiOAuthLogins", () => {
       logins.finish(
         started.loginId,
         { userId: "owner", spaceId: "workspace" },
-        async (result) => result.credential.access,
+        async (result) => result.credential?.access,
       ),
     ).resolves.toEqual({ status: "connected", value: "access-token" });
     expect(
@@ -2014,7 +2051,7 @@ describe("PiOAuthLogins", () => {
         // The expiry timer must not abort this write. A replacement that
         // started underneath it would be overwritten by this persist.
         if (result.signal.aborted) throw result.signal.reason;
-        persistedAccess = result.credential.access;
+        persistedAccess = result.credential?.access;
         return "saved-original";
       });
       await Promise.resolve();

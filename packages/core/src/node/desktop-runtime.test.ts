@@ -35,31 +35,6 @@ import {
 } from "./desktop-runtime.js";
 
 const JOINED_COMMAND = `import os, time
-raw = open("/proc/self/cmdline", "rb").read().rstrip(b"\\0")
-joined = raw.replace(b"\\0", b" ")
-start = end = None
-for line in open("/proc/self/maps"):
-    if "[stack]" in line:
-        a, b = line.split()[0].split("-")
-        start, end = int(a, 16), int(b, 16)
-        break
-mem = os.open("/proc/self/mem", os.O_RDWR)
-pos = end
-found = None
-while pos > start:
-    size = min(1024 * 1024, pos - start)
-    pos -= size
-    os.lseek(mem, pos, os.SEEK_SET)
-    data = os.read(mem, size + len(raw))
-    idx = data.find(raw)
-    if idx != -1:
-        found = pos + idx
-        break
-if found is None:
-    raise SystemExit("cmdline not found")
-os.lseek(mem, found, os.SEEK_SET)
-os.write(mem, joined)
-os.close(mem)
 open(os.environ["JOINED_READY"], "w").write("ready\\n")
 time.sleep(120)
 `;
@@ -492,8 +467,10 @@ describe("shared Linux desktop lifecycle", () => {
       const home = path.join(root, "home");
       const profiles = path.join(home, "team --type=renderer archive");
       const bin = path.join(root, "bin");
+      const runtime = path.join(root, "runtime");
       const log = path.join(root, "closed");
       mkdirSync(bin);
+      mkdirSync(runtime);
       const sleeper = path.join(bin, "sleeper");
       writeFileSync(sleeper, "#!/usr/bin/env python3\nimport time\ntime.sleep(120)\n");
       chmodSync(sleeper, 0o755);
@@ -518,7 +495,7 @@ describe("shared Linux desktop lifecycle", () => {
       );
       chmodSync(path.join(bin, "python3"), 0o755);
       const children: ChildProcess[] = [];
-      const start = (directory: string, args: string[]) => {
+      const start = (directory: string, args: string[], pidKey?: string) => {
         const cookies = path.join(directory, "Default", "Network", "Cookies");
         mkdirSync(path.dirname(cookies), { recursive: true });
         writeFileSync(cookies, "session=kept");
@@ -527,6 +504,8 @@ describe("shared Linux desktop lifecycle", () => {
           detached: true,
         });
         children.push(child);
+        if (pidKey && child.pid)
+          writeFileSync(path.join(runtime, `browser-pid-${pidKey}`), String(child.pid));
         return { child, cookies };
       };
       const botDir = path.join(profiles, "chromium-bot-abc");
@@ -534,19 +513,20 @@ describe("shared Linux desktop lifecycle", () => {
       const python = spawnSync("python3", ["-c", "import sys; print(sys.executable)"], {
         encoding: "utf8",
       }).stdout.trim();
-      const joiner = path.join(bin, "join-cmdline.py");
-      writeFileSync(joiner, JOINED_COMMAND);
       const joinedDir = path.join(profiles, "chromium-screen-4");
       const joinedReady = path.join(root, "joined-ready");
       const joinedCookies = path.join(joinedDir, "Default", "Network", "Cookies");
       mkdirSync(path.dirname(joinedCookies), { recursive: true });
       writeFileSync(joinedCookies, "session=kept");
-      const joined = spawn(
-        python,
-        [joiner, `--user-data-dir=${joinedDir}`, "--remote-debugging-port=9335"],
-        { stdio: "ignore", detached: true, env: { ...process.env, JOINED_READY: joinedReady } },
-      );
+      const joined = spawn(python, ["-c", JOINED_COMMAND], {
+        argv0: `chromium --user-data-dir=${joinedDir} --remote-debugging-port=9335`,
+        stdio: "ignore",
+        detached: true,
+        env: { ...process.env, JOINED_READY: joinedReady },
+      });
       children.push(joined);
+      if (joined.pid)
+        writeFileSync(path.join(runtime, "browser-pid-chromium-screen-4"), String(joined.pid));
       const launcher = spawn(
         "/bin/sh",
         [
@@ -559,17 +539,22 @@ describe("shared Linux desktop lifecycle", () => {
         { stdio: "ignore", detached: true },
       );
       children.push(launcher);
-      const bot = start(botDir, [`--user-data-dir=${botDir}`, "--remote-debugging-port=9333"]);
+      const bot = start(
+        botDir,
+        [`--user-data-dir=${botDir}`, "--remote-debugging-port=9333"],
+        "abc",
+      );
       const botRenderer = start(botDir, [
         "--type=renderer",
         `--user-data-dir=${botDir}`,
         "--remote-debugging-port=9333",
       ]);
       const botHelper = start(botDir, [`--user-data-dir=${botDir}`]);
-      const primary = start(primaryDir, [
-        `--user-data-dir=${primaryDir}`,
-        "--remote-debugging-port=9334",
-      ]);
+      const primary = start(
+        primaryDir,
+        [`--user-data-dir=${primaryDir}`, "--remote-debugging-port=9334"],
+        "chromium",
+      );
       try {
         const command = quiesceBrowserProfilesCommand({
           ...DEFAULT_DESKTOP_ENV,
@@ -695,17 +680,13 @@ describe("shared Linux desktop lifecycle", () => {
       const python = spawnSync("python3", ["-c", "import sys; print(sys.executable)"], {
         encoding: "utf8",
       }).stdout.trim();
-      const joiner = path.join(root, "join-cmdline.py");
-      writeFileSync(joiner, JOINED_COMMAND);
-      const child = spawn(
-        python,
-        [
-          joiner,
-          "--user-data-dir=/tmp/my --type=renderer --remote-debugging-port=1 profile",
-          "--remote-debugging-port=9444",
-        ],
-        { stdio: "ignore", detached: true, env: { ...process.env, JOINED_READY: ready } },
-      );
+      const child = spawn(python, ["-c", JOINED_COMMAND], {
+        argv0:
+          "chromium --user-data-dir=/tmp/my --type=renderer --remote-debugging-port=1 profile --remote-debugging-port=9444",
+        stdio: "ignore",
+        detached: true,
+        env: { ...process.env, JOINED_READY: ready },
+      });
       try {
         waitForReady(ready);
         const result = spawnSync(

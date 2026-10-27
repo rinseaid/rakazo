@@ -8,6 +8,8 @@ export type ConnectedBackupOption = ModelBackupChoice & {
   providerName: string;
   /** The connection serving it; absent for a deployment-managed model. */
   credentialId?: string;
+  /** Per-account discovery fence for hosted native models. */
+  nativeGeneration?: string;
   /** The connection's name, or the provider's for a deployment-managed model. */
   connectionName: string;
 };
@@ -93,6 +95,11 @@ export function connectedBackupOptions(
         label: entry.label,
         providerName,
         ...(connection ? { credentialId: connection.id } : {}),
+        ...(connection && entry.provider === "google-antigravity"
+          ? {
+              nativeGeneration: entry.nativeGenerationsByCredential?.[connection.id],
+            }
+          : {}),
         connectionName: connection ? connectionDisplayName(connection, providerName) : providerName,
       };
     };
@@ -104,6 +111,11 @@ export function connectedBackupOptions(
       options.push(
         ...models
           .filter((entry) => !entry.credentialIds || entry.credentialIds.includes(connection.id))
+          .filter(
+            (entry) =>
+              entry.provider !== "google-antigravity" ||
+              Boolean(entry.nativeGenerationsByCredential?.[connection.id]),
+          )
           .map((entry) => option(entry, connection)),
       );
   }

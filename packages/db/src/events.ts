@@ -43,6 +43,11 @@ import {
   partialReplyClientNonce,
   RunHistoryWriteError,
 } from "./messages.js";
+import type { NativeConversationCommitCandidate } from "./native-conversation-candidate.js";
+import {
+  discardNativeConversationCandidate,
+  promoteNativeConversationCandidate,
+} from "./native-conversation-candidate.js";
 import { deleteRunSecretsInTransaction } from "./run-secrets.js";
 import { isRunResponse, readRunTimingFields } from "./run-timing.js";
 import { RUN_TURN_CHECKPOINT_KIND } from "./run-turn-checkpoint.js";
@@ -153,6 +158,8 @@ export type FinalizeRunInput = FinalizeRunBase &
         outcome: "completed";
         blocks: MessageBlock[];
         markUnread?: boolean;
+        /** Private opaque candidate; promoted only in this history commit transaction. */
+        nativeConversationCandidate?: NativeConversationCommitCandidate;
       }
     | {
         outcome: "failed";
@@ -1546,7 +1553,16 @@ export async function finalizeRun(
   realtime?: RealtimeFanout,
   analytics?: ProductAnalytics,
 ): Promise<FinalizeRunResult | false> {
-  const committed = await withTransactionRetry(() => finalizeRunOnce(prisma, input));
+  let committed: Awaited<ReturnType<typeof finalizeRunOnce>>;
+  try {
+    committed = await withTransactionRetry(() => finalizeRunOnce(prisma, input));
+  } catch (error) {
+    if (input.outcome === "completed" && input.nativeConversationCandidate)
+      discardNativeConversationCandidate(input.nativeConversationCandidate);
+    throw error;
+  }
+  if (input.outcome === "completed" && input.nativeConversationCandidate)
+    discardNativeConversationCandidate(input.nativeConversationCandidate);
   if (!committed) return false;
   await notifyRealtime(realtime, committed.threadId, committed.seq);
   const timing = await readRunTimingFields(prisma, input.runId);
@@ -1602,7 +1618,9 @@ async function finalizeRunOnce(
     try {
       writableRun = await assertRunCanWriteHistory(tx, input.runId);
     } catch (error) {
-      if (error instanceof RunHistoryWriteError) return null;
+      if (error instanceof RunHistoryWriteError) {
+        return null;
+      }
       throw error;
     }
     const now = new Date();
@@ -1625,7 +1643,9 @@ async function finalizeRunOnce(
         leaseExpiresAt: null,
       },
     });
-    if (terminal.count !== 1) return null;
+    if (terminal.count !== 1) {
+      return null;
+    }
     await tx.externalEffect.deleteMany({
       where: {
         runId: input.runId,
@@ -1728,6 +1748,15 @@ async function finalizeRunOnce(
       });
     }
     const continuationRunId = await createPendingSteeringRun(tx, input);
+    if (input.outcome === "completed" && input.nativeConversationCandidate) {
+      if (replyBlocks.length > 0 && writableRun)
+        await promoteNativeConversationCandidate(tx, input.nativeConversationCandidate, {
+          runId: input.runId,
+          leaseOwner: input.leaseOwner,
+          leaseFence: input.leaseFence,
+          userId: writableRun.userId,
+        });
+    }
     await tx.bot.update({ where: { id: input.botId }, data: { updatedAt: now } });
     return { threadId: lastEvent.threadId, seq: lastEvent.seq, continuationRunId, firstResponse };
   }, FINALIZE_TRANSACTION_OPTIONS);

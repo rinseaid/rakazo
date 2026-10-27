@@ -92,8 +92,13 @@ describe("desktop preload bridge", () => {
     const unsubscribe = bridge.oauth.onCallback((callback) => received.push(callback));
 
     expect(on).toHaveBeenCalledWith("desktop.oauth.callback", expect.any(Function));
-    listeners[0]?.({ sender: "ipc-event" }, { code: "ac_123", state: "verifier_456" });
-    expect(received).toEqual([{ code: "ac_123", state: "verifier_456" }]);
+    const callback = {
+      code: "ac_123",
+      state: "verifier_456",
+      callbackUrl: "http://localhost:53692/callback?code=ac_123&state=verifier_456",
+    };
+    listeners[0]?.({ sender: "ipc-event" }, callback);
+    expect(received).toEqual([callback]);
 
     unsubscribe();
     expect(off).toHaveBeenCalledWith("desktop.oauth.callback", expect.any(Function));

@@ -93,6 +93,39 @@ describe("host-aware sandbox", () => {
     expect(pageBrowser).not.toHaveBeenCalled();
   });
 
+  it("routes duplex processes only to the selected computer and refuses unsupported hosts", async () => {
+    const isolated: SandboxProvider = new FakeSandboxProvider();
+    const process = {
+      events: (async function* () {
+        yield* [];
+      })(),
+      exited: Promise.resolve({ code: 0 }),
+      write: async () => {},
+      end: async () => {},
+      close: async () => {},
+    };
+    isolated.openProcess = vi.fn(async () => process);
+    const host: SandboxProvider = new FakeSandboxProvider();
+    const sandbox = new HostAwareSandbox(isolated, host, async () => true);
+    const computer: ComputerRef = {
+      id: "computer",
+      providerRef: "computer",
+      botId: "home",
+      kind: "fake",
+    };
+    const request = { argv: ["fixture"] };
+    expect(await sandbox.openProcess(computer, request, ctx)).toBe(process);
+    expect(isolated.openProcess).toHaveBeenCalledWith(computer, request, ctx);
+    await expect(
+      sandbox.openProcess({ ...computer, kind: "desktop" }, request, ctx),
+    ).rejects.toThrow("unavailable");
+    expect(isolated.openProcess).toHaveBeenCalledOnce();
+    const disabled = new HostAwareSandbox(isolated, host, async () => false);
+    await expect(
+      disabled.openProcess({ ...computer, kind: "desktop" }, request, ctx),
+    ).rejects.toThrow("disabled");
+  });
+
   it("routes billing capability by computer kind rather than the current host setting", () => {
     const isolated: SandboxProvider = new FakeSandboxProvider();
     isolated.billsWhileRunning = vi.fn(() => true);

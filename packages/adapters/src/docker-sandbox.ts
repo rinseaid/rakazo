@@ -25,6 +25,8 @@ import {
   computerObservation,
   normalizeWorkspacePath,
 } from "./computer-support.js";
+import { dockerAccountOperations } from "./docker-account-operations.js";
+import { openHttpProcess } from "./duplex-process.js";
 import { sandboxCommandArgv } from "./sandbox-command-environment.js";
 import { readBodyCapped, withAbort } from "./web-ssrf.js";
 
@@ -102,12 +104,14 @@ function sandboxGoneError(computer: ComputerRef): Error {
 
 export class DockerSandboxProvider implements SandboxProvider {
   private readonly supervisorToken: string;
+  readonly accountOperations: NonNullable<SandboxProvider["accountOperations"]>;
 
   constructor(
     private readonly supervisorUrl: string,
     supervisorToken?: string,
   ) {
     this.supervisorToken = supervisorToken ?? resolveSupervisorToken(process.env);
+    this.accountOperations = dockerAccountOperations(supervisorUrl, this.supervisorToken);
   }
 
   describe() {
@@ -185,6 +189,21 @@ export class DockerSandboxProvider implements SandboxProvider {
   }
 
   async prepare(_computer: ComputerRef, _context: AdapterContext): Promise<void> {}
+
+  openProcess(computer: ComputerRef, request: CommandRequest, context: AdapterContext) {
+    if (request.pty) throw new Error("Duplex processes do not support PTYs");
+    return openHttpProcess(
+      this.url(`/computers/${computer.id}/process`),
+      this.headers(context, computer.botId),
+      {
+        ...request,
+        argv: sandboxCommandArgv(request),
+        cwd: dockerCwd(request.cwd),
+        timeoutMs: boundedSandboxCommandTimeoutMs(request.timeoutMs),
+      },
+      context.signal,
+    );
+  }
 
   async *execute(
     computer: ComputerRef,

@@ -332,6 +332,7 @@ export async function runAutoReviewJudge(
           reasoning: input.reasoning,
           thinkingLevel: input.checker.thinkingLevel ?? null,
           oauth: input.oauth,
+          nativeAuth: input.nativeAuth,
           callObserver: input.callObserver,
         },
       },
@@ -414,6 +415,7 @@ export type LlmAutoReviewOptions = {
   maxTokens?: number;
   reasoning?: boolean;
   oauth?: AgentRunModel["oauth"];
+  nativeAuth?: AgentRunModel["nativeAuth"];
   callObserver?: AgentRunModel["callObserver"];
   runId: string;
   spaceId: string;

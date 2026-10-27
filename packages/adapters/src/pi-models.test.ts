@@ -12,6 +12,19 @@ import { probeOpenAiCompatibleModels } from "./pi-openai-compatible-provider.js"
 import { MODEL_CONNECT_TIMEOUT_MS } from "./pi-runtime-limits.js";
 
 describe("catalog provider authentication", () => {
+  it("keeps Google Antigravity hidden by default and exposes only a UI placeholder when enabled", () => {
+    vi.stubEnv("RAKAZO_GOOGLE_ANTIGRAVITY_ENABLED", "false");
+    expect(listPiCatalog().some((entry) => entry.provider === "google-antigravity")).toBe(false);
+    vi.stubEnv("RAKAZO_GOOGLE_ANTIGRAVITY_ENABLED", "true");
+    expect(listPiCatalog().filter((entry) => entry.provider === "google-antigravity")).toEqual([
+      expect.objectContaining({
+        id: "__google-antigravity-model-required__",
+        placeholder: true,
+        signIn: "auth-url",
+      }),
+    ]);
+  });
+
   it("checks authentication before listing a public OpenRouter catalog", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () =>
       Response.json({ data: [{ id: "fixture-model" }] }),

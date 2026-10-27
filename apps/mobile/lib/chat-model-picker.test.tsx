@@ -35,6 +35,10 @@ const mocks = vi.hoisted(() => ({
   savedGatewayId: "gateway-fixture",
   vendorLabels: false,
   subscriptionSignIn: false,
+  nativeGoogleFlow: false,
+  nativeModelId: "native-model-real",
+  nativeGeneration: "native-generation-fixture",
+  nativeSavedModelId: "" as string,
   secondConnection: false,
   alert: vi.fn(),
   prompt: vi.fn(),
@@ -111,6 +115,8 @@ vi.mock("./api", () => ({
     const result = mocks.rpc(procedure, input);
     if (procedure === "models/connect") {
       await result;
+      if (mocks.nativeGoogleFlow)
+        mocks.nativeSavedModelId = String((input as { modelId?: string }).modelId ?? "");
       const saved = input as {
         maxTokens?: number | null;
         accountId?: string;
@@ -125,12 +131,28 @@ vi.mock("./api", () => ({
     if (procedure === "models/beginOAuth")
       return {
         loginId: "login-fixture",
-        mode: "device-code",
+        mode: mocks.nativeGoogleFlow ? "auth-url" : "device-code",
         verificationUri: "https://example.com/sign-in",
+        ...(mocks.nativeGoogleFlow ? { callbackInput: "url" } : {}),
         userCode: "FIXTURE",
         expiresInSeconds: 600,
       };
     if (procedure === "models/completeOAuth") return mocks.completeOAuth(options?.signal);
+    if (procedure === "models/finishOAuth" && mocks.nativeGoogleFlow) {
+      mocks.connected = true;
+      return {
+        id: CREDENTIAL_ID,
+        provider: "google-antigravity",
+        authKind: "native",
+        hasKey: false,
+        needsModelSelection: true,
+      };
+    }
+    if (procedure === "models/probeCatalog" && mocks.nativeGoogleFlow)
+      return {
+        models: [mocks.nativeModelId],
+        generation: mocks.nativeGeneration,
+      };
     if (procedure === "bots/update") return mocks.update(input);
     if (procedure === "models/role") {
       const main = (input as { role: string }).role === "main";
@@ -171,65 +193,110 @@ vi.mock("./api", () => ({
         hostCredentialProvider: mocks.serverCredentials ? "openrouter" : undefined,
       };
     if (procedure === "models/list")
-      return mocks.catalogEmpty
-        ? []
-        : mocks.vendorLabels
-          ? catalog.map((entry, index) => ({
-              ...entry,
-              label:
-                index === 0
-                  ? "Anthropic: Claude Sonnet 4.5"
-                  : index === 1
-                    ? "Google: Gemini"
-                    : entry.label,
-            }))
-          : mocks.subscriptionSignIn
-            ? catalog.map((entry) => ({ ...entry, signIn: "device-code" }))
-            : [
-                ...catalog.map((entry) => ({
-                  ...entry,
-                  provider: cloudflare?.provider ?? entry.provider,
-                  providerName: cloudflare?.providerName ?? entry.providerName,
-                })),
-                ...(mocks.extraProviders
-                  ? ["Anthropic", "Google", "OpenAI", "Other", "Last"].map((name) => ({
-                      ...catalog[0],
-                      provider: name.toLowerCase(),
-                      providerName: name,
-                    }))
-                  : []),
-              ];
-    if (procedure === "models/credentials")
-      return mocks.connected
+      return mocks.nativeGoogleFlow
         ? [
             {
-              id: CREDENTIAL_ID,
-              provider: cloudflare?.provider ?? "openrouter",
-              label: cloudflare?.providerName ?? "OpenRouter",
-              maxTokens: mocks.savedMaxTokens,
-              ...(mocks.gateway
-                ? { accountId: mocks.savedAccountId, gatewayId: mocks.savedGatewayId }
-                : mocks.workers
-                  ? { accountId: mocks.savedAccountId }
-                  : {}),
-              modelId: "vendor/model-1",
-              isDefault: true,
-              thinkingLevel: "high",
+              provider: "google-antigravity",
+              providerName: "Google Antigravity",
+              id: "__google-antigravity-model-required__",
+              label: "Google Antigravity",
+              billing: "Subscription",
+              auth: "oauth",
+              signIn: "auth-url",
+              oauthLabel: "Sign in with Google Antigravity",
+              placeholder: true,
             },
-            ...(mocks.secondConnection
+            ...(mocks.connected
               ? [
                   {
-                    id: WORK_CREDENTIAL_ID,
-                    provider: "openrouter",
-                    label: "Work",
-                    hasKey: true,
-                    isDefault: false,
-                    authKind: "api_key",
+                    provider: "google-antigravity",
+                    providerName: "Google Antigravity",
+                    id: mocks.nativeModelId,
+                    label: "Google model fixture",
+                    billing: "Subscription",
+                    auth: "oauth",
+                    live: true,
+                    credentialIds: [CREDENTIAL_ID],
+                    nativeGenerationsByCredential: {
+                      [CREDENTIAL_ID]: mocks.nativeGeneration,
+                    },
                   },
                 ]
               : []),
           ]
-        : [];
+        : mocks.catalogEmpty
+          ? []
+          : mocks.vendorLabels
+            ? catalog.map((entry, index) => ({
+                ...entry,
+                label:
+                  index === 0
+                    ? "Anthropic: Claude Sonnet 4.5"
+                    : index === 1
+                      ? "Google: Gemini"
+                      : entry.label,
+              }))
+            : mocks.subscriptionSignIn
+              ? catalog.map((entry) => ({ ...entry, signIn: "device-code" }))
+              : [
+                  ...catalog.map((entry) => ({
+                    ...entry,
+                    provider: cloudflare?.provider ?? entry.provider,
+                    providerName: cloudflare?.providerName ?? entry.providerName,
+                  })),
+                  ...(mocks.extraProviders
+                    ? ["Anthropic", "Google", "OpenAI", "Other", "Last"].map((name) => ({
+                        ...catalog[0],
+                        provider: name.toLowerCase(),
+                        providerName: name,
+                      }))
+                    : []),
+                ];
+    if (procedure === "models/credentials")
+      return mocks.nativeGoogleFlow
+        ? mocks.connected
+          ? [
+              {
+                id: CREDENTIAL_ID,
+                provider: "google-antigravity",
+                label: "Google Antigravity",
+                authKind: "native",
+                hasKey: false,
+                isDefault: false,
+                ...(mocks.nativeSavedModelId ? { modelId: mocks.nativeSavedModelId } : {}),
+              },
+            ]
+          : []
+        : mocks.connected
+          ? [
+              {
+                id: CREDENTIAL_ID,
+                provider: cloudflare?.provider ?? "openrouter",
+                label: cloudflare?.providerName ?? "OpenRouter",
+                maxTokens: mocks.savedMaxTokens,
+                ...(mocks.gateway
+                  ? { accountId: mocks.savedAccountId, gatewayId: mocks.savedGatewayId }
+                  : mocks.workers
+                    ? { accountId: mocks.savedAccountId }
+                    : {}),
+                modelId: "vendor/model-1",
+                isDefault: true,
+                thinkingLevel: "high",
+              },
+              ...(mocks.secondConnection
+                ? [
+                    {
+                      id: WORK_CREDENTIAL_ID,
+                      provider: "openrouter",
+                      label: "Work",
+                      hasKey: true,
+                      isDefault: false,
+                      authKind: "api_key",
+                    },
+                  ]
+                : []),
+            ]
+          : [];
     return [];
   },
 }));
@@ -581,6 +648,8 @@ beforeEach(() => {
   mocks.savedGatewayId = "gateway-fixture";
   mocks.vendorLabels = false;
   mocks.subscriptionSignIn = false;
+  mocks.nativeGoogleFlow = false;
+  mocks.nativeSavedModelId = "";
   mocks.secondConnection = false;
   mocks.backups = [];
   mocks.primary = null;
@@ -1777,6 +1846,74 @@ describe("connection screen targets", () => {
     expect(mocks.rpc).toHaveBeenCalledWith("models/disconnect", {
       provider: "openrouter",
       credentialId: CREDENTIAL_ID,
+    });
+  });
+
+  it("signs into a native Google account, discovers its models, and saves a keyless account-scoped choice", async () => {
+    mocks.connected = false;
+    mocks.nativeGoogleFlow = true;
+    mocks.completeOAuth.mockResolvedValue({ status: "ready" });
+    const onConnected = vi.fn(async () => undefined);
+    await renderConnection({
+      provider: "google-antigravity",
+      credentialId: null,
+      makeDefault: false,
+      onConnected,
+    });
+
+    await act(async () => buttonWithText("Sign in with Google Antigravity")!.click());
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "models/beginOAuth",
+      expect.objectContaining({
+        provider: "google-antigravity",
+        deferModelSelection: true,
+        makeDefault: false,
+      }),
+    );
+    const begin = mocks.rpc.mock.calls.find(
+      ([procedure]) => procedure === "models/beginOAuth",
+    )![1] as Record<string, unknown>;
+    expect(begin).not.toHaveProperty("modelId");
+
+    const callbackUrl = "http://127.0.0.1:54123/oauth/callback?code=private&state=fixture";
+    editField("Authorization callback URL", callbackUrl);
+    await act(async () => buttonWithText("Submit")!.click());
+    await act(async () => {
+      for (let index = 0; index < 20; index += 1) await Promise.resolve();
+    });
+    expect(mocks.rpc).toHaveBeenCalledWith("models/finishOAuth", { loginId: "login-fixture" });
+    expect(mocks.rpc).toHaveBeenCalledWith("models/probeCatalog", {
+      provider: "google-antigravity",
+      credentialId: CREDENTIAL_ID,
+    });
+    expect(container.textContent).not.toContain(callbackUrl);
+
+    act(() => buttonWithText("Advanced")!.click());
+    await act(async () => {
+      mocks.menus.get("Model")!.onPressAction({
+        nativeEvent: { event: `choice:${mocks.nativeModelId}` },
+      });
+      await Promise.resolve();
+    });
+    await act(async () => buttonWithText("Save")!.click());
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "models/connect",
+      expect.objectContaining({
+        provider: "google-antigravity",
+        credentialId: CREDENTIAL_ID,
+        modelId: mocks.nativeModelId,
+        nativeGeneration: mocks.nativeGeneration,
+      }),
+    );
+    const connect = mocks.rpc.mock.calls.find(
+      ([procedure]) => procedure === "models/connect",
+    )![1] as Record<string, unknown>;
+    expect(connect).not.toHaveProperty("apiKey");
+    expect(onConnected).toHaveBeenCalledWith({
+      provider: "google-antigravity",
+      modelId: mocks.nativeModelId,
+      credentialId: CREDENTIAL_ID,
+      nativeGeneration: mocks.nativeGeneration,
     });
   });
 });

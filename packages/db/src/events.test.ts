@@ -7,6 +7,7 @@ import {
 } from "@rakazo/core";
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "./client.js";
+import type { DataKey } from "./content-crypto.js";
 import { CrossSpaceCommunicationBlockedError } from "./cross-space-communication.js";
 import {
   AnswerTooLongError,
@@ -27,6 +28,12 @@ import {
   settleReleasedTakeoverCards,
 } from "./events.js";
 import { partialReplyClientNonce, RunHistoryWriteError } from "./messages.js";
+import {
+  createPendingNativeConversationCandidate,
+  promoteNativeConversationCandidate,
+} from "./native-conversation-candidate.js";
+import type { NativeConversationBinding } from "./native-conversation-state.js";
+import { nativeContextCursor } from "./native-conversation-state.js";
 import { installSecurityEventStore } from "./security-events.js";
 
 class TestFanout implements RealtimeFanout {
@@ -72,6 +79,240 @@ function event(seq: number) {
 }
 
 describe("finalizeRun", () => {
+  function nativeFinalizeHarness(failures: Error[] = []) {
+    const binding: NativeConversationBinding = {
+      userId: "user-1",
+      spaceId: "space-1",
+      threadId: "thread-1",
+      botId: "bot-1",
+      helperNamespace: "main",
+      provider: "fixture",
+      credentialId: "credential-1",
+      accountGeneration: "generation-1",
+      modelId: "fixture-model",
+      runtimeVersion: "runtime-1",
+      hostBoundary: "private-image-1",
+      historyGeneration: 0,
+      contextBoundary: "system-tools-strategy",
+    };
+    const bindingHash = "a".repeat(64);
+    const fence = { runId: "run-1", leaseOwner: "worker-1", leaseFence: 1, hostId: "host-1" };
+    const key: DataKey = {
+      id: "key-1",
+      spaceId: binding.spaceId,
+      version: 1,
+      key: new Uint8Array(32).fill(4),
+    };
+    const commitCandidate = createPendingNativeConversationCandidate({
+      id: "state-1",
+      binding,
+      fence,
+      bindingHash,
+      revision: 0,
+      key,
+      snapshot: { sessionId: "session-1", bytes: Buffer.from("private fixture state") },
+    }).bindCursor(nativeContextCursor(["user: request", "assistant: final answer"]));
+    let ciphertext: string | null = null;
+    let runStatus = "running";
+    let nextMessageSeq = 1;
+    let nextEventSeq = 1;
+    const messages: unknown[] = [];
+    const savedEvents: unknown[] = [];
+    const row = {
+      id: "state-1",
+      userId: binding.userId,
+      spaceId: binding.spaceId,
+      threadId: binding.threadId,
+      botId: binding.botId,
+      credentialId: binding.credentialId,
+      bindingHash,
+      revision: 0,
+      claimHostId: fence.hostId as string | null,
+    };
+    const tx = {
+      $queryRaw: vi.fn(async () => []),
+      externalEffect: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+      run: {
+        findUnique: vi.fn(async () => ({
+          status: runStatus,
+          startedAt: null,
+          firstResponseAt: null,
+          userId: binding.userId,
+        })),
+        findUniqueOrThrow: vi.fn(async () => ({ sourceMessage: null })),
+        findFirst: vi.fn(async () => null),
+        updateMany: vi.fn(async ({ data }: { data?: { status?: string } }) => {
+          if (data?.status) runStatus = data.status;
+          return { count: 1 };
+        }),
+      },
+      attempt: { updateMany: vi.fn(async () => ({ count: 1 })) },
+      task: { updateMany: vi.fn(async () => ({ count: 1 })) },
+      thread: {
+        findFirst: vi.fn(async () => ({ id: binding.threadId })),
+        update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          if ("nextMessageSeq" in data) nextMessageSeq += 1;
+          if ("nextEventSeq" in data) nextEventSeq += 1;
+          return { nextMessageSeq, nextEventSeq };
+        }),
+      },
+      event: {
+        create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+          const event = {
+            ...data,
+            id: `event-${savedEvents.length + 1}`,
+            createdAt: new Date(),
+            seq: nextEventSeq - 1,
+          };
+          savedEvents.push(event);
+          return event;
+        }),
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        findMany: vi.fn(async () => []),
+      },
+      secret: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+      steeringMessage: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async () => ({ count: 0 })),
+      },
+      message: {
+        findFirst: vi.fn(async () => null),
+        create: vi.fn(async ({ data }: { data: unknown }) => {
+          messages.push(data);
+          return { id: `message-${messages.length}`, ...(data as object) };
+        }),
+      },
+      nativeConversationState: {
+        updateMany: vi.fn(
+          async ({
+            where,
+            data,
+          }: {
+            where: Record<string, unknown>;
+            data: Record<string, unknown>;
+          }) => {
+            const matches =
+              where.id === row.id &&
+              where.userId === row.userId &&
+              where.spaceId === row.spaceId &&
+              where.threadId === row.threadId &&
+              where.botId === row.botId &&
+              where.credentialId === row.credentialId &&
+              where.bindingHash === row.bindingHash &&
+              where.revision === row.revision &&
+              where.claimHostId === row.claimHostId &&
+              where.ciphertext === null &&
+              ciphertext === null;
+            if (matches) {
+              ciphertext = data.ciphertext as string;
+              row.claimHostId = data.claimHostId as string | null;
+            }
+            return { count: matches ? 1 : 0 };
+          },
+        ),
+      },
+      userModelCredential: {
+        findFirst: vi.fn(async () => ({ id: binding.credentialId })),
+      },
+      bot: {
+        update: vi.fn(async () => {
+          const failure = failures.shift();
+          if (failure) throw failure;
+          return {};
+        }),
+      },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (action: (client: typeof tx) => Promise<unknown>) => {
+        const before = {
+          ciphertext,
+          claimHostId: row.claimHostId,
+          runStatus,
+          nextMessageSeq,
+          nextEventSeq,
+          messages: messages.length,
+          savedEvents: savedEvents.length,
+        };
+        try {
+          return await action(tx);
+        } catch (error) {
+          ciphertext = before.ciphertext;
+          row.claimHostId = before.claimHostId;
+          runStatus = before.runStatus;
+          nextMessageSeq = before.nextMessageSeq;
+          nextEventSeq = before.nextEventSeq;
+          messages.length = before.messages;
+          savedEvents.length = before.savedEvents;
+          throw error;
+        }
+      }),
+    };
+    return {
+      prisma: prisma as unknown as PrismaClient,
+      tx,
+      commitCandidate,
+      ciphertext: () => ciphertext,
+      messages,
+      savedEvents,
+      binding,
+      fence,
+    };
+  }
+
+  function nativeFinalizeInput(
+    harness: ReturnType<typeof nativeFinalizeHarness>,
+  ): Parameters<typeof finalizeRun>[1] {
+    return {
+      spaceId: harness.binding.spaceId,
+      threadId: harness.binding.threadId,
+      botId: harness.binding.botId,
+      runId: harness.fence.runId,
+      taskId: "task-1",
+      attemptId: "attempt-1",
+      leaseOwner: harness.fence.leaseOwner,
+      leaseFence: harness.fence.leaseFence,
+      outcome: "completed",
+      blocks: [{ kind: "text", text: "Final answer." }],
+      nativeConversationCandidate: harness.commitCandidate,
+    };
+  }
+
+  it("retries promotion with the same candidate and commits one history row", async () => {
+    const conflict = Object.assign(new Error("serialization conflict"), { code: "P2034" });
+    const harness = nativeFinalizeHarness([conflict]);
+
+    await expect(finalizeRun(harness.prisma, nativeFinalizeInput(harness))).resolves.toEqual({
+      continuationRunId: null,
+    });
+
+    expect(harness.prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(harness.tx.nativeConversationState.updateMany).toHaveBeenCalledTimes(2);
+    expect(harness.messages).toHaveLength(1);
+    expect(harness.savedEvents).toHaveLength(2);
+    expect(harness.ciphertext()).toMatch(/^rkz1:/);
+  });
+
+  it("rolls back and disposes a candidate after a terminal transaction failure", async () => {
+    const harness = nativeFinalizeHarness([new Error("terminal transaction failure")]);
+
+    await expect(finalizeRun(harness.prisma, nativeFinalizeInput(harness))).rejects.toThrow(
+      "terminal transaction failure",
+    );
+
+    expect(harness.prisma.$transaction).toHaveBeenCalledOnce();
+    expect(harness.tx.nativeConversationState.updateMany).toHaveBeenCalledOnce();
+    expect(harness.ciphertext()).toBeNull();
+    expect(harness.messages).toHaveLength(0);
+    expect(harness.savedEvents).toHaveLength(0);
+    await expect(
+      promoteNativeConversationCandidate(harness.tx as never, harness.commitCandidate, {
+        ...harness.fence,
+        userId: harness.binding.userId,
+      }),
+    ).rejects.toThrow("Invalid native conversation commit candidate");
+  });
+
   it("stamps the final steps block with wall-clock run duration", () => {
     const blocks = [
       { kind: "steps" as const, steps: [{ label: "Read file", count: 1 }] },

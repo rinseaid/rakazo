@@ -1,4 +1,7 @@
 import type {
+  AccountHostOperation,
+  AccountHostProcess,
+  AccountOperationLease,
   AdapterContext,
   AdapterDescriptor,
   AgentRunRequest,
@@ -40,6 +43,7 @@ import type {
   ConnectorEvent,
   ConnectorTool,
   ControlLeaseRef,
+  DuplexProcess,
   MemoryCapabilities,
   MemoryCommitRequest,
   MemoryExportRequest,
@@ -91,7 +95,21 @@ import type {
   WorkspaceDirectoryRequest,
 } from "./types.js";
 
+/** No workspace access, snapshots, screen, or arbitrary exec capability is exposed. */
+export interface AccountOperationHostProvider {
+  capabilities(signal: AbortSignal): Promise<readonly AccountHostOperation[]>;
+  provision(
+    lease: AccountOperationLease,
+    operation: AccountHostOperation,
+    signal: AbortSignal,
+  ): Promise<void>;
+  openProcess(lease: AccountOperationLease, signal: AbortSignal): Promise<AccountHostProcess>;
+  destroy(lease: AccountOperationLease, signal: AbortSignal): Promise<void>;
+}
+
 export interface SandboxProvider {
+  /** Dedicated ephemeral isolation, never a fallback to a bot or the API machine. */
+  readonly accountOperations?: AccountOperationHostProvider;
   /** True when every running minute is billed, so the active-lifetime cap applies. */
   billsWhileRunning?(computer: ComputerRef): boolean;
   describe(): AdapterDescriptor<SandboxCapabilities>;
@@ -144,6 +162,12 @@ export interface SandboxProvider {
     request: CommandRequest,
     context: AdapterContext,
   ): AsyncIterable<ProcessEvent>;
+  /** Optional duplex execution on this exact computer. No host fallback. */
+  openProcess?(
+    computer: ComputerRef,
+    request: CommandRequest,
+    context: AdapterContext,
+  ): Promise<DuplexProcess>;
   /** Cancel only this run’s native commands; other providers may use a sandbox-scoped fallback. */
   cancelRunWork?(
     computer: ComputerRef,

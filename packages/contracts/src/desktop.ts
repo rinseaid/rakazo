@@ -34,6 +34,12 @@ export interface RakazoDesktopUpdate {
 export interface RakazoDesktopOAuthCallback {
   code: string;
   state?: string;
+  /**
+   * Original loopback callback URL for providers whose secure input is the full
+   * redirect. Available only over the protected desktop IPC bridge; never log,
+   * analytics-track, or post this value to chat.
+   */
+  callbackUrl?: string;
 }
 
 export interface RakazoDesktop {

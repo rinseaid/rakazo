@@ -10,6 +10,11 @@ import type { PrismaClient } from "@rakazo/db";
 import { chooseModelCredential, findModelCredential, findModelCredentialById } from "@rakazo/db";
 import { resolveDeploymentModel } from "./deployment-model.js";
 import { modelCredentialDto } from "./model-connect.js";
+import {
+  GOOGLE_ANTIGRAVITY_PLACEHOLDER_MODEL_ID,
+  isNativeModelProvider,
+  nativeModelProviderEnabled,
+} from "./model-native-auth.js";
 import type { ModelCredentialAuthKind } from "./pi-catalog-availability.js";
 import {
   catalogModelAvailableForAuth,
@@ -278,7 +283,15 @@ export function validateModelAuthAvailability(
   modelId: string,
   credentialPlaintext?: string,
 ): string | undefined {
+  if (
+    isNativeModelProvider(provider) &&
+    (!nativeModelProviderEnabled(provider) || modelId === GOOGLE_ANTIGRAVITY_PLACEHOLDER_MODEL_ID)
+  )
+    return UNAVAILABLE_MODEL_FOR_AUTH_MESSAGE;
   if (!credentialPlaintext) return undefined;
+  const secret = parseModelSecret(credentialPlaintext);
+  if (secret.kind === "native" && secret.provider !== provider)
+    return UNAVAILABLE_MODEL_FOR_AUTH_MESSAGE;
   const authKind = modelCredentialAuthKindFromPlaintext(credentialPlaintext);
   const catalogEntry = listPiCatalog().find(
     (item) => item.provider === canonicalPiProviderId(provider) && item.id === modelId,
@@ -457,7 +470,16 @@ export type ConnectedModelResolution = {
   /** The connection a role row is pinned to; nothing else may serve it. */
   credentialId?: string | null;
   hostedProvider?: string;
+  /** A persisted model choice is revalidated by its native ACP session at run time. */
+  trustSavedNativeModel?: boolean;
   codexCatalog?: CodexLiveCatalog;
+  nativeModelListed?: (input: {
+    actor: Pick<Actor, "userId" | "spaceId">;
+    provider: string;
+    credentialId: string;
+    modelId: string;
+    profileRevision?: string;
+  }) => Promise<boolean>;
   /** Preview a connection save using the same runtime selection. */
   replacement?: { credentialId: string; secret: StoredModelSecret; defaultModel?: string | null };
 };
@@ -518,6 +540,7 @@ export type BotModelChangeDeps = {
   prisma: PrismaClient;
   secretStore: Pick<SecretStore, "load">;
   codexCatalog?: CodexLiveCatalog;
+  nativeModelListed?: ConnectedModelResolution["nativeModelListed"];
   refreshExpiredCredential: (
     scope: { userId: string; spaceId: string },
     secretId: string,
@@ -573,7 +596,17 @@ export async function validateBotModelChange(
       return { ok: false, error: "Connect that model provider first" };
     }
     const inCatalog =
-      isCatalogModelChoice(provider, model) ||
+      (isNativeModelProvider(provider)
+        ? nativeModelProviderEnabled(provider) &&
+          Boolean(
+            await deps.nativeModelListed?.({
+              actor: scope,
+              provider,
+              credentialId: credential.id,
+              modelId: model,
+            }),
+          )
+        : isCatalogModelChoice(provider, model)) ||
       (await credentialLiveListsModel(
         deps.prisma,
         deps.secretStore,
@@ -739,6 +772,18 @@ export async function validateConnectedModelChoice(
   );
   if (!credential) return "Connect that model provider first";
   if (!usableModelId(modelId)) return "Unknown model for that provider";
+  if (isNativeModelProvider(provider)) {
+    if (!nativeModelProviderEnabled(provider)) return UNAVAILABLE_MODEL_FOR_AUTH_MESSAGE;
+    if (resolution.trustSavedNativeModel) return undefined;
+    return (await resolution.nativeModelListed?.({
+      actor,
+      provider,
+      credentialId: credential.id,
+      modelId,
+    }))
+      ? undefined
+      : "Rediscover this account's models before selecting one";
+  }
   // Compatible catalog entries are placeholders, not evidence that this
   // connection enables that id. Only legacy connections keep that exception.
   if (provider !== OPENAI_COMPATIBLE_PROVIDER_ID) {

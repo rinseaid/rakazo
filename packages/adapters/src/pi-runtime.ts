@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Agent } from "@earendil-works/pi-agent-core";
 import type {
@@ -12,6 +12,7 @@ import type {
   Models,
   ModelsSimpleStreamOptions,
   ModelThinkingLevel,
+  Provider,
   ProviderHeaders,
   TranscriptContext,
 } from "@earendil-works/pi-ai";
@@ -70,13 +71,19 @@ import { DEFAULT_OPENROUTER_MODEL_ID } from "./deployment-model.js";
 import { groqRequestContextWindow } from "./groq-request-budget.js";
 import { estimateModelContextTokens } from "./model-context.js";
 import { IMAGE_RETURNING_COMPUTER_TOOLS } from "./model-vision.js";
+import type { NativeConversationRunCandidate } from "./native-conversation-candidate.js";
+import {
+  discardNativeConversationRunCandidate,
+  emitNativeConversationCandidate,
+  registerNativeConversationCandidateSink,
+} from "./native-conversation-candidate.js";
 import {
   normalizeOpenAiToolParameters,
   openAiToolParametersNeedNormalization,
 } from "./openai-tool-parameters.js";
 import { affordableOpenRouterOutput } from "./openrouter-output-budget.js";
 import { PiRuntimeCredentialStore, toOAuthCredential } from "./pi-credentials.js";
-import { estimatePiImageTokens } from "./pi-image-context.js";
+import { estimateGoogleAcpImageTokens, estimatePiImageTokens } from "./pi-image-context.js";
 import { liveModelSibling } from "./pi-live-model.js";
 import { registerLocalProvider } from "./pi-local-provider.js";
 import { applyPiModelCompatibility } from "./pi-model-compat.js";
@@ -191,6 +198,17 @@ export function maxToolCallsPerTurn(env: NodeJS.ProcessEnv = process.env): numbe
 }
 
 export interface PiAgentRuntimeOptions {
+  /** Optional provider adapter scoped to this exact run and resolved connection. */
+  createProvider?: (
+    model: AgentRunRequest["model"],
+    scope: {
+      request: AgentRunRequest;
+      context?: Partial<AdapterContext>;
+      signal: AbortSignal;
+      /** Main conversation or an isolated ephemeral helper execution. */
+      agentNamespace?: string;
+    },
+  ) => { provider: Provider; close(): Promise<void> } | undefined;
   /** Directory where Pi JSONL sessions are written. Omit to disable recording. */
   sessionRoot?: string;
   /** Explicit transport for tests and synthetic wire diagnostics. */
@@ -207,12 +225,14 @@ export interface PiAgentRuntimeOptions {
 }
 
 export class PiAgentRuntime implements AgentRuntime {
+  private readonly createProvider?: PiAgentRuntimeOptions["createProvider"];
   private readonly sessionRecorder?: PiSessionRecorder;
   private readonly modelFetch?: typeof globalThis.fetch;
   private readonly modelCallObserver?: ModelCallObserver;
   private readonly onContextDecision?: PiAgentRuntimeOptions["onContextDecision"];
 
   constructor(options: PiAgentRuntimeOptions = {}) {
+    this.createProvider = options.createProvider;
     this.modelFetch = options.modelFetch;
     this.modelCallObserver = options.modelCallObserver;
     this.onContextDecision = options.onContextDecision;
@@ -276,10 +296,51 @@ export class PiAgentRuntime implements AgentRuntime {
     const queue = createQueue();
 
     const work = withPiTelemetry(request, async (span) => {
+      const sourceId = request.durableNativeHistorySourceMessageId;
+      const sourceMatches = sourceId
+        ? request.history.filter((message) => message.id === sourceId && message.role === "user")
+        : [];
+      const providerRequest: AgentRunRequest = {
+        ...request,
+        durableNativeHistoryProvenance:
+          sourceId &&
+          sourceId === request.sourceMessageId &&
+          !request.routineId &&
+          !request.turnCheckpoint &&
+          sourceMatches.length === 1
+            ? {
+                sourceMessageId: sourceId,
+                logicalContentSha256: createHash("sha256")
+                  .update(sourceMatches[0]!.content)
+                  .digest("hex"),
+                deliveredPromptSha256: createHash("sha256").update(request.prompt).digest("hex"),
+              }
+            : undefined,
+      };
+      const nativeConversationCandidates: NativeConversationRunCandidate[] = [];
+      registerNativeConversationCandidateSink(providerRequest, (candidate) => {
+        if (!providerRequest.durableNativeHistoryProvenance) {
+          discardNativeConversationRunCandidate(candidate);
+          return;
+        }
+        nativeConversationCandidates.push(candidate);
+      });
       let trackedBudget: ToolCallBudget | undefined;
       let resumeHost: ToolHost | undefined;
+      let genuineFinalResponse = false;
+      const providers: Array<{ close(): Promise<void> }> = [];
+      const resolveModel = (config: AgentRunRequest["model"], agentNamespace = "main") => {
+        const adapter = this.createProvider?.(config, {
+          request: providerRequest,
+          context,
+          signal,
+          agentNamespace,
+        });
+        if (adapter) providers.push(adapter);
+        return resolveRuntimeModel(config, adapter?.provider);
+      };
       try {
-        const selectedModel = resolveRuntimeModel(request.model);
+        const selectedModel = resolveModel(request.model);
         if (!selectedModel.model) {
           queue.push({
             type: "text",
@@ -302,6 +363,7 @@ export class PiAgentRuntime implements AgentRuntime {
           credentials: selectedModel.credentials,
         };
         const host: ToolHost = {
+          resolveModel: this.createProvider ? resolveModel : undefined,
           queue,
           context,
           modelFetch: this.modelFetch,
@@ -326,6 +388,7 @@ export class PiAgentRuntime implements AgentRuntime {
         const tools = toAgentTools(toolDefs, host);
         const seenSteeringIds: string[] = [];
         const initialSteering = request.claimSteering ? await request.claimSteering([]) : [];
+        if (initialSteering.length > 0) providerRequest.durableNativeHistoryProvenance = undefined;
         seenSteeringIds.push(...initialSteering.map((item) => item.id));
         const restored = request.turnCheckpoint
           ? restoreTurnCheckpoint(request.turnCheckpoint, {
@@ -392,12 +455,12 @@ export class PiAgentRuntime implements AgentRuntime {
 
         let contextPolicy = createRuntimeContextPolicy(request, context, {
           credentialScope: apiKey,
-          imageTokens: estimatePiImageTokens,
+          imageTokens: imageTokenEstimator(model.provider),
         });
         const contextPolicyFor = (target: RuntimeModelTarget) =>
           createRuntimeContextPolicy({ ...request, model: target.config }, context, {
             credentialScope: target.credentials?.accessToken ?? target.apiKey,
-            imageTokens: estimatePiImageTokens,
+            imageTokens: imageTokenEstimator(target.config.provider),
           });
         let sentContext: { context: Context; sourceLength: number } | undefined;
         const prepareContext = (ctx: Context, m: Model<Api>) => {
@@ -407,7 +470,7 @@ export class PiAgentRuntime implements AgentRuntime {
         };
         const usageHooks = {
           prepareContext,
-          imageTokens: estimatePiImageTokens,
+          imageTokens: imageTokenEstimator(model.provider),
           recordUsage: request.onUsage,
           onUsage: (usage: AgentUsage) => {
             contextPolicy.onUsage(usage);
@@ -426,6 +489,7 @@ export class PiAgentRuntime implements AgentRuntime {
         let agent: Agent;
         let activeStreamTarget = host.activeModel;
         const fallbackState: FallbackStreamState = {
+          resolveModel,
           request,
           getActive: () => activeStreamTarget,
           signal,
@@ -518,6 +582,7 @@ export class PiAgentRuntime implements AgentRuntime {
             if (!request.claimSteering) return undefined;
             const steering = await request.claimSteering([...seenSteeringIds]);
             if (steering.length === 0) return undefined;
+            providerRequest.durableNativeHistoryProvenance = undefined;
             seenSteeringIds.push(...steering.map((item) => item.id));
             for (const item of steering) representedHistoryIds.add(item.messageId);
             for (const item of steering) {
@@ -966,6 +1031,15 @@ export class PiAgentRuntime implements AgentRuntime {
             queue.push({ type: "text", text: streamed });
           }
         }
+        genuineFinalResponse =
+          !signal.aborted &&
+          !host.pausePending &&
+          !error &&
+          !budgetExceeded &&
+          !toolWorkPendingFinal &&
+          terminalMessage?.role === "assistant" &&
+          !messageHasToolCall(terminalMessage) &&
+          assistantText(terminalMessage).trim().length > 0;
         queue.push(streamed.trim() ? { type: "done", text: streamed } : { type: "done" });
       } catch (error) {
         span?.setStatus({ status: "error" });
@@ -980,6 +1054,13 @@ export class PiAgentRuntime implements AgentRuntime {
                 : new Error(message),
         );
       } finally {
+        // Each adapter belongs to this run; never retain credential-bearing ACP processes globally.
+        await Promise.allSettled(providers.map((provider) => provider.close()));
+        for (const candidate of nativeConversationCandidates) {
+          if (genuineFinalResponse && providerRequest.durableNativeHistoryProvenance)
+            emitNativeConversationCandidate(request, candidate);
+          else discardNativeConversationRunCandidate(candidate);
+        }
         queue.close();
         if (trackedBudget) {
           const keepForResume =
@@ -1009,6 +1090,10 @@ function toPiImages(images: AgentRunRequest["currentTurnImages"]) {
   }));
 }
 
+function imageTokenEstimator(provider: string) {
+  return provider === "google-antigravity" ? estimateGoogleAcpImageTokens : estimatePiImageTokens;
+}
+
 function configuredOpenRouterModel(
   id: string,
   contextWindow = 16_384,
@@ -1033,7 +1118,10 @@ function configuredOpenRouterModel(
   };
 }
 
-export function resolveRuntimeModel(modelConfig: AgentRunRequest["model"]): {
+export function resolveRuntimeModel(
+  modelConfig: AgentRunRequest["model"],
+  customProvider?: Provider,
+): {
   provider: string;
   modelId: string;
   models: Models;
@@ -1045,13 +1133,16 @@ export function resolveRuntimeModel(modelConfig: AgentRunRequest["model"]): {
   const provider = canonicalPiProviderId(
     modelConfig.provider === "scripted" ? "openrouter" : modelConfig.provider,
   );
+  if (modelConfig.nativeAuth && (modelConfig.nativeAuth.provider !== provider || !customProvider)) {
+    throw new Error("Native account requires its matching scoped provider adapter");
+  }
   const envDefaultModel = process.env.PI_DEFAULT_MODEL?.trim();
   const envDefaultProvider = process.env.PI_DEFAULT_PROVIDER?.trim() || "openrouter";
   const requestedId =
     modelConfig.id === "scripted" ? envDefaultModel || DEFAULT_OPENROUTER_MODEL_ID : modelConfig.id;
   const modelId = usableModelId(requestedId) ?? "";
   const credentials = credentialStoreForRequest({ model: modelConfig }, provider);
-  const models = modelsForRequest({ model: modelConfig }, provider, credentials);
+  const models = modelsForRequest({ model: modelConfig }, provider, credentials, customProvider);
   let model = models.getModel(provider, modelId);
   if (
     provider === "openrouter" &&
@@ -1103,8 +1194,16 @@ export function modelsForRequest(
   request: Pick<AgentRunRequest, "model">,
   provider: string,
   credentials?: PiRuntimeCredentialStore,
+  customProvider?: Provider,
 ): Models {
   const store = credentials ?? credentialStoreForRequest(request, provider);
+  if (customProvider) {
+    if (customProvider.id !== provider)
+      throw new Error("Provider adapter does not match the selected connection");
+    const models = builtinModels(store ? { credentials: store } : undefined);
+    models.setProvider(customProvider);
+    return models;
+  }
   if (store) {
     return registerOpenAiCompatibleCatalog(
       registerLocalProvider(applyPiModelCompatibility(builtinModels({ credentials: store }))),
@@ -1319,6 +1418,7 @@ function toHistory(
         content: images.length ? [{ type: "text" as const, text }, ...images] : text,
         timestamp: Date.now(),
         rakazoHistory: true,
+        rakazoHistoryRole: m.role,
         rakazoMessageId: m.id,
         rakazoCreatedAt: m.createdAt,
       };
@@ -1722,13 +1822,15 @@ async function executeSubagent(host: ToolHost, executionId: string, args: Record
   }
 
   const selectedModel =
-    hasBackups && requestModel === host.activeModel.config
+    !host.resolveModel && hasBackups && requestModel === host.activeModel.config
       ? {
           ...host.activeModel,
           provider: host.activeModel.model.provider,
           modelId: host.activeModel.model.id,
         }
-      : resolveRuntimeModel(requestModel);
+      : host.resolveModel
+        ? host.resolveModel(requestModel, agentId)
+        : resolveRuntimeModel(requestModel);
   if (!selectedModel.model) {
     const message = `Unknown model ${selectedModel.provider}/${selectedModel.modelId}`;
     host.queue.push({
@@ -1747,6 +1849,7 @@ async function executeSubagent(host: ToolHost, executionId: string, args: Record
   const childDefs = host.request.tools.filter((tool) => !DELEGATION_TOOL_NAMES.has(tool.name));
   const nestedHost: ToolHost = {
     ...host,
+    resolveModel: host.resolveModel ? (config) => host.resolveModel!(config, agentId) : undefined,
     activeModel: {
       config: requestModel,
       models: selectedModel.models,
@@ -1773,11 +1876,15 @@ async function executeSubagent(host: ToolHost, executionId: string, args: Record
       sourceMessageId: undefined,
     },
     host.context,
-    { credentialScope: selectedModel.apiKey, imageTokens: estimatePiImageTokens },
+    {
+      credentialScope: selectedModel.apiKey,
+      imageTokens: imageTokenEstimator(selectedModel.provider),
+    },
   );
   let nested!: Agent;
   const providerFailures = new WeakSet<AssistantMessage["content"]>();
   const retryState: FallbackStreamState = {
+    resolveModel: nestedHost.resolveModel,
     request: { ...host.request, model: requestModel, fallbackModels: [] },
     getActive: () => nestedHost.activeModel,
     signal: host.signal,
@@ -1800,7 +1907,10 @@ async function executeSubagent(host: ToolHost, executionId: string, args: Record
           sourceMessageId: undefined,
         },
         host.context,
-        { credentialScope: target.apiKey, imageTokens: estimatePiImageTokens },
+        {
+          credentialScope: target.apiKey,
+          imageTokens: imageTokenEstimator(target.config.provider),
+        },
       );
     },
     isProviderFailure: (message) => providerFailures.has(message.content),
@@ -1828,7 +1938,7 @@ async function executeSubagent(host: ToolHost, executionId: string, args: Record
             },
             {
               prepareContext: contextPolicy.prepareContext,
-              imageTokens: estimatePiImageTokens,
+              imageTokens: imageTokenEstimator(target.config.provider),
               recordUsage: host.request.onUsage,
               onProviderError: (message) => providerFailures.add(message.content),
               onUsage: (usage) => {
@@ -2566,7 +2676,13 @@ interface EventQueue {
   iterate(): AsyncIterable<AgentRuntimeEvent>;
 }
 
+type ScopedRuntimeModelResolver = (
+  config: AgentRunRequest["model"],
+  agentNamespace?: string,
+) => ReturnType<typeof resolveRuntimeModel>;
+
 interface ToolHost {
+  resolveModel?: ScopedRuntimeModelResolver;
   context?: Partial<AdapterContext>;
   modelFetch?: typeof globalThis.fetch;
   onContextDecision?: PiAgentRuntimeOptions["onContextDecision"];
@@ -2688,6 +2804,7 @@ function resizeRuntimeTarget(
 }
 
 interface FallbackStreamState {
+  resolveModel?: ScopedRuntimeModelResolver;
   request: AgentRunRequest;
   getActive(): RuntimeModelTarget;
   signal: AbortSignal;
@@ -2858,7 +2975,10 @@ function fallbackIncompatibility(
       return "The request exceeds the backup model's image limit.";
     throw error;
   }
-  const inputTokens = estimateModelContextTokens(context, estimatePiImageTokens);
+  const inputTokens = estimateModelContextTokens(
+    context,
+    imageTokenEstimator(candidate.config.provider),
+  );
   const outputTokens = resolveCompletionMaxTokens(
     candidate.model.maxTokens,
     candidate.config.maxTokens,
@@ -2988,11 +3108,16 @@ function fallbackAwareModelStream(
         }
         // Never borrow the primary or process-wide key for a backup. Production resolves
         // each candidate lazily from the authenticated user's Space-scoped credential store.
-        if (!config.apiKey && !config.oauth && config.provider !== OPENAI_COMPATIBLE_PROVIDER_ID) {
+        if (
+          !config.apiKey &&
+          !config.oauth &&
+          !(config.nativeAuth?.provider === config.provider && state.resolveModel) &&
+          config.provider !== OPENAI_COMPATIBLE_PROVIDER_ID
+        ) {
           skip("No credential is available for the backup model.");
           continue;
         }
-        const resolved = resolveRuntimeModel(config);
+        const resolved = (state.resolveModel ?? resolveRuntimeModel)(config);
         if (
           !resolved.model ||
           resolved.model.provider !== config.provider ||

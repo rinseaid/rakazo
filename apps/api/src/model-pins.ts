@@ -148,7 +148,25 @@ export async function assertRoutineModel(
     actor,
     model.modelProvider,
     model.modelId,
-    { codexCatalog },
+    {
+      codexCatalog,
+      nativeModelListed: async ({ actor: owner, provider, credentialId, modelId }) => {
+        if (!deps.nativeModelCatalog) return false;
+        try {
+          const catalog = await deps.nativeModelCatalog({
+            actor: owner,
+            provider,
+            credentialId,
+            modelId,
+            action: "contains",
+            signal: AbortSignal.timeout(1_000),
+          });
+          return catalog.models.includes(modelId);
+        } catch {
+          return false;
+        }
+      },
+    },
   );
   if (message) throw new ORPCError("BAD_REQUEST", { message });
 }

@@ -1,8 +1,10 @@
 import { ORPCError } from "@orpc/server";
 import { SecretStoreUnavailableError } from "@rakazo/adapter-kit";
 import {
+  isNativeModelProvider,
   listPiCatalog,
   modelCredentialDto,
+  nativeModelProviderEnabled,
   oauthCredentialEmail,
   prepareStoredModelAuth,
   probeCatalogProviderModels,
@@ -264,6 +266,24 @@ export function modelsRoutes(ctx: RouterContext) {
       ),
       probeCatalog: authed.models.probeCatalog.handler(async ({ context, input }) => {
         try {
+          if (isNativeModelProvider(input.provider)) {
+            if (
+              !nativeModelProviderEnabled(input.provider) ||
+              !deps.nativeModelCatalog ||
+              !input.credentialId ||
+              input.apiKey
+            )
+              throw new Error("Select a native account connection to list its models");
+            const catalog = await deps.nativeModelCatalog({
+              actor: context.actor,
+              provider: input.provider,
+              credentialId: input.credentialId,
+              signal: context.signal ?? new AbortController().signal,
+              action: "discover",
+            });
+            return catalog;
+          }
+          if (!input.apiKey) throw new Error("An API key is required to list models");
           const models = await probeCatalogProviderModels(
             { provider: input.provider, apiKey: input.apiKey },
             deps.modelConnectionFetch,
@@ -277,6 +297,10 @@ export function modelsRoutes(ctx: RouterContext) {
         }
       }),
       beginOAuth: authed.models.beginOAuth.handler(async ({ context, input }) => {
+        if (isNativeModelProvider(input.provider) && !nativeModelProviderEnabled(input.provider))
+          throw new ORPCError("NOT_FOUND", {
+            message: "Google Antigravity sign-in is not enabled on this server",
+          });
         // An older app's sign-in renews the provider's newest connection, bound now so a
         // disconnect of that connection retires it and it never lands on another one.
         const target = await modelConnectionTarget(
@@ -296,6 +320,8 @@ export function modelsRoutes(ctx: RouterContext) {
           settingsScope: input.scope,
           label: input.label,
           codePage: input.codePage,
+          deferModelSelection: input.deferModelSelection,
+          nativeGeneration: input.nativeGeneration,
           signal: context.signal,
         });
       }),
@@ -321,26 +347,55 @@ export function modelsRoutes(ctx: RouterContext) {
               login.provider,
               login.credentialId,
             );
-            return persistModelCredential(
+            if (login.deferModelSelection && login.authKind !== "native")
+              throw new ORPCError("BAD_REQUEST", {
+                message: "Deferred model selection requires a native account",
+              });
+            const priorPreference =
+              login.deferModelSelection && target
+                ? await deps.prisma.userModelPreference.findFirst({
+                    where: { userId: context.actor.userId, credentialId: target.id },
+                    select: { modelId: true, thinkingLevel: true },
+                  })
+                : null;
+            const saved = await persistModelCredential(
               deps,
               context.actor,
               {
                 provider: login.provider,
                 credentialId: target?.id ?? null,
-                plaintext: serializeModelSecret({ kind: "oauth", credential: login.credential }),
+                plaintext: serializeModelSecret(
+                  login.authKind === "native"
+                    ? login.nativeSecret
+                    : { kind: "oauth", credential: login.credential },
+                ),
                 // A second account is told apart by the email it signed in with.
                 label:
-                  oauthCredentialEmail(login.credential) ??
+                  (login.authKind === "native"
+                    ? undefined
+                    : oauthCredentialEmail(login.credential)) ??
                   login.label ??
                   listPiCatalog().find((entry) => entry.provider === login.provider)?.providerName,
                 modelId: login.modelId,
+                nativeGeneration: login.nativeGeneration,
                 thinkingLevel: login.thinkingLevel,
+                deferModelSelection: login.deferModelSelection,
                 makeDefault: login.makeDefault,
                 scope: login.settingsScope,
                 signal: login.signal,
               },
               codexCatalog,
             );
+            if (!login.deferModelSelection) return saved;
+            return priorPreference?.modelId
+              ? {
+                  ...saved,
+                  modelId: priorPreference.modelId,
+                  ...(priorPreference.thinkingLevel
+                    ? { thinkingLevel: priorPreference.thinkingLevel as ThinkingLevel }
+                    : {}),
+                }
+              : { ...saved, needsModelSelection: true as const };
           },
         );
         if (result.status === "pending") {
@@ -358,6 +413,23 @@ export function modelsRoutes(ctx: RouterContext) {
       setDefault: authed.models.setDefault.handler(async ({ context, input }) => {
         const modelId = usableModelId(input.modelId);
         if (!modelId) throw new ORPCError("BAD_REQUEST", { message: "Choose a model" });
+        if (isNativeModelProvider(input.provider)) {
+          if (!nativeModelProviderEnabled(input.provider))
+            throw new ORPCError("NOT_FOUND", { message: "Native Google models are unavailable" });
+          if (!input.credentialId || !input.nativeGeneration)
+            throw new ORPCError("BAD_REQUEST", {
+              message: "Rediscover this account's models before selecting one",
+            });
+          await validateRoleChoices(context.actor, "main", [
+            {
+              provider: input.provider,
+              modelId,
+              credentialId: input.credentialId,
+              nativeGeneration: input.nativeGeneration,
+              thinkingLevel: input.thinkingLevel,
+            },
+          ]);
+        }
         // An omitted level keeps the one this model already has in the main list: on the
         // chosen connection first, then on another, as writeModelRole does.
         const savedChoices = async (
@@ -397,7 +469,9 @@ export function modelsRoutes(ctx: RouterContext) {
               modelId: input.modelId,
               preferences,
               credentials,
-            }),
+            }).filter((candidate) =>
+              isNativeModelProvider(input.provider) ? candidate.id === input.credentialId : true,
+            ),
           };
         };
         await withSerializableRetry(async () => {
@@ -611,6 +685,15 @@ export function modelsRoutes(ctx: RouterContext) {
         (deps.providerCatalog ?? providerCatalogCache).invalidate(
           canonicalPiProviderId(input.provider),
         );
+        if (isNativeModelProvider(input.provider) && deps.nativeModelCatalog) {
+          await deps.nativeModelCatalog({
+            actor: context.actor,
+            provider: input.provider,
+            credentialId: input.credentialId,
+            signal: context.signal ?? new AbortController().signal,
+            action: "invalidate",
+          });
+        }
         return { ok: true as const };
       }),
     },

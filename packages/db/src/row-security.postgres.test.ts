@@ -36,6 +36,16 @@ type Tenant = {
 function rowsFor(t: Tenant, tag: string): Array<[string, Record<string, unknown>]> {
   return [
     [
+      "accountOperationHost",
+      {
+        id: `rls-account-host-${tag}-${t.userId}`,
+        spaceId: t.spaceId,
+        userId: t.userId,
+        operationId: `fixture-${tag}`,
+        expiresAt: new Date(Date.now() + 60_000),
+      },
+    ],
+    [
       "spaceModelRoleChoice",
       {
         spaceId: t.spaceId,
@@ -206,6 +216,11 @@ describePostgres("row-level security (PostgreSQL)", () => {
 
   afterAll(async () => {
     if (!owner) return;
+    await runAsSystem("row-level security test cleanup", () =>
+      owner.prisma.accountOperationHost.deleteMany({
+        where: { userId: { in: tenants.map((t) => t.userId) } },
+      }),
+    );
     await owner.prisma.organization.deleteMany({ where: { id: organizationId } });
     await owner.prisma.user.deleteMany({ where: { id: { in: tenants.map((t) => t.userId) } } });
     for (const handle of [owner, app]) {

@@ -29,11 +29,15 @@ import {
   ChatSdkMessagingSurface,
   CodexCatalogCache,
   ComposioConnector,
+  createAccountModelProvider,
+  createAccountOperationHostSweeper,
   createAgentHomeStore,
   createArtifactStore,
   createBackgroundJobHandlers,
   createCloudAgentConnection,
   createConnectorStack,
+  createHostedNativeCatalog,
+  createHostedNativeLogin,
   createIdleComputerSweeper,
   createJobReconciler,
   createMessagingContextLoader,
@@ -62,6 +66,7 @@ import {
   McpConnector,
   McpOAuthBroker,
   messagingPlatformsFromEnv,
+  nativeModelProviderEnabled,
   PiAgentRuntime,
   PiOAuthLogins,
   PipedreamConnector,
@@ -354,7 +359,14 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     env.mcpAllowPrivateEndpoint,
   );
   const memoryProviders = new SpaceMemoryProviderResolver(prisma, secrets);
-  const oauthLogins = new PiOAuthLogins(undefined, { prisma, secrets });
+  const oauthLogins = new PiOAuthLogins(
+    undefined,
+    { prisma, secrets },
+    createHostedNativeLogin({ prisma, sandbox }),
+  );
+  const nativeModelCatalog = createHostedNativeCatalog({ prisma, sandbox, secretStore: secrets });
+  const sweepAccountHosts = createAccountOperationHostSweeper({ prisma, sandbox });
+  const sweepIdleComputers = createIdleComputerSweeper({ prisma, jobs });
   const home = createAgentHomeStore(env.dataDir, prisma);
   const artifacts = createArtifactStore(env.dataDir, prisma);
   const memory = new MarkdownMemoryStore(prisma);
@@ -454,6 +466,7 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     (env.agentRuntime === "scripted"
       ? new ScriptedAgentRuntime()
       : new PiAgentRuntime({
+          createProvider: createAccountModelProvider({ prisma, sandbox }),
           sessionRoot: env.piSessionRecording ? piSessionsRoot(env.dataDir) : undefined,
         }));
   const pushTokens = new PrismaPushTokenStore(prisma, env.encryptionKey);
@@ -538,6 +551,19 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
     prisma,
     runtime,
     codexCatalog,
+    nativeModelListed: async (input) => {
+      if (!nativeModelProviderEnabled(input.provider)) return false;
+      try {
+        const result = await nativeModelCatalog({
+          ...input,
+          action: "contains",
+          signal: AbortSignal.timeout(1_000),
+        });
+        return result.models.includes(input.modelId);
+      } catch {
+        return false;
+      }
+    },
     sandbox,
     memory,
     memoryProviders,
@@ -620,12 +646,16 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
           prisma,
           securityEventRetentionDays(),
         ),
-        reconcileIdleComputers: createIdleComputerSweeper({ prisma, jobs }),
+        reconcileIdleComputers: async () => {
+          await sweepAccountHosts();
+          await sweepIdleComputers();
+        },
       })
     : undefined;
   reconciler?.start();
 
   const router = createRouter({
+    nativeModelCatalog,
     analytics,
     cloudAgent,
     codexCatalog,

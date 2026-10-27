@@ -1,4 +1,9 @@
-import type { ModelOAuthBegin, SettingsScope, ThinkingLevel } from "@rakazo/contracts";
+import type {
+  ModelCredential,
+  ModelOAuthBegin,
+  SettingsScope,
+  ThinkingLevel,
+} from "@rakazo/contracts";
 import { cancelModelOAuthAttempt, finishModelOAuthAttempt } from "@rakazo/core";
 import { useEffect, useRef, useState } from "react";
 import { desktopBridge, oauthStateOf, onDesktopOAuthCallback } from "./desktop";
@@ -11,6 +16,9 @@ export type ModelOAuthSignInBegin = {
   /** The connection to sign in again; null adds another. */
   credentialId?: string | null;
   modelId?: string;
+  nativeGeneration?: string;
+  /** Save a native account before choosing any inference model. */
+  deferModelSelection?: boolean;
   thinkingLevel?: ThinkingLevel | null;
   makeDefault?: boolean;
   /** Where makeDefault sets the main model. */
@@ -25,7 +33,11 @@ export type ModelOAuthSignInBegin = {
  */
 export function useModelOAuthSignIn(options: {
   /** `credentialId` is the connection the sign-in saved. */
-  onFinished: (controller: AbortController, credentialId: string) => void | Promise<void>;
+  onFinished: (
+    controller: AbortController,
+    credentialId: string,
+    result: Pick<ModelCredential, "authKind" | "modelId"> & { needsModelSelection?: true },
+  ) => void | Promise<void>;
   onError: (message: string) => void;
   onClearError?: () => void;
 }) {
@@ -39,6 +51,7 @@ export function useModelOAuthSignIn(options: {
   const oauthLoginIdRef = useRef<string | null>(null);
   const oauthCodeSubmittingRef = useRef(false);
   const oauthCaptureRef = useRef<(() => void) | null>(null);
+  const oauthTabRef = useRef<Window | null>(null);
   const onFinishedRef = useRef(onFinished);
   const onErrorRef = useRef(onError);
   const onClearErrorRef = useRef(onClearError);
@@ -54,6 +67,8 @@ export function useModelOAuthSignIn(options: {
 
   function cancelOAuthAttempt(resetState = true) {
     releaseOAuthCapture();
+    oauthTabRef.current?.close();
+    oauthTabRef.current = null;
     oauthCodeSubmittingRef.current = false;
     const loginId = oauthLoginIdRef.current;
     oauthLoginIdRef.current = null;
@@ -77,7 +92,7 @@ export function useModelOAuthSignIn(options: {
     // Keep post-connect UI work outside the OAuth try/catch so a refresh failure
     // is not reported as a failed sign-in (finishOAuth already persisted).
     try {
-      await onFinishedRef.current(controller, saved.id);
+      await onFinishedRef.current(controller, saved.id, saved);
     } catch (err) {
       if (controller.signal.aborted) return;
       onErrorRef.current(errorText(err, "Connected, but could not refresh"));
@@ -134,15 +149,51 @@ export function useModelOAuthSignIn(options: {
     setPopupBlocked(false);
     const controller = new AbortController();
     oauthAbortRef.current = controller;
+    const browserAuth = desktopBridge()?.oauth;
+    // Reserve a tab during the click so popup blockers allow it to navigate
+    // after the server returns the authorization URL.
+    if (begin.provider === "google-antigravity" && !browserAuth?.open) {
+      oauthTabRef.current?.close();
+      oauthTabRef.current = window.open("about:blank", "_blank");
+      if (oauthTabRef.current) {
+        oauthTabRef.current.opener = null;
+        try {
+          const popup = oauthTabRef.current;
+          const message = popup.document.createElement("main");
+          message.setAttribute("role", "status");
+          message.setAttribute("aria-live", "polite");
+          message.textContent = "Preparing Google sign-in…";
+          Object.assign(message.style, {
+            fontFamily: "system-ui, sans-serif",
+            fontSize: "16px",
+            margin: "2rem",
+          });
+          Object.assign(popup.document.body.style, {
+            margin: "0",
+            minHeight: "100vh",
+            display: "grid",
+            placeItems: "center",
+            background: "Canvas",
+            color: "CanvasText",
+          });
+          popup.document.body.replaceChildren(message);
+          popup.document.title = "Preparing Google sign-in";
+        } catch {
+          // Keep the reserved popup usable if the browser blocks document access.
+        }
+      }
+    }
     let waitingForCode = false;
     try {
       const started = await rpc.models.beginOAuth(
         {
           provider: begin.provider,
           ...(begin.credentialId !== undefined ? { credentialId: begin.credentialId } : {}),
-          modelId: begin.modelId,
-          thinkingLevel: begin.thinkingLevel,
-          makeDefault: begin.makeDefault,
+          ...(begin.modelId !== undefined ? { modelId: begin.modelId } : {}),
+          ...(begin.nativeGeneration ? { nativeGeneration: begin.nativeGeneration } : {}),
+          ...(begin.deferModelSelection ? { deferModelSelection: true } : {}),
+          ...(begin.thinkingLevel !== undefined ? { thinkingLevel: begin.thinkingLevel } : {}),
+          ...(begin.makeDefault !== undefined ? { makeDefault: begin.makeDefault } : {}),
           ...(begin.scope ? { scope: begin.scope } : {}),
           label: begin.label,
           // Desktop receives the loopback redirect; a browser tab cannot, so it gets a code page.
@@ -150,20 +201,24 @@ export function useModelOAuthSignIn(options: {
         },
         { signal: controller.signal },
       );
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) {
+        oauthTabRef.current?.close();
+        oauthTabRef.current = null;
+        return;
+      }
       oauthLoginIdRef.current = started.loginId;
       setPasteCode("");
       setOauth(started);
       if (started.mode === "auth-url") {
-        // Subscribe before the popup exists: a provider that is already
+        // Subscribe before the authorization page opens: a provider already
         // authorized can redirect before React commits the state above.
         releaseOAuthCapture();
         oauthCaptureRef.current = onDesktopOAuthCallback(
           (code) => void submitOAuthCode(code, started),
           oauthStateOf(started.verificationUri),
+          started.callbackInput === "url" ? "url" : "code",
         );
       }
-      const browserAuth = desktopBridge()?.oauth;
       if (browserAuth?.open) {
         const cancelBrowser = () =>
           void browserAuth.cancel?.(started.verificationUri).catch(() => undefined);
@@ -177,15 +232,23 @@ export function useModelOAuthSignIn(options: {
         await browserAuth.open(started.verificationUri);
         if (controller.signal.aborted) return;
       } else {
-        // null means the browser blocked the popup — the card keeps showing the
-        // URL, and callers can flag that nothing opened.
-        if (!window.open(started.verificationUri, "rakazo-model-oauth", "noopener,noreferrer")) {
+        const reservedTab = oauthTabRef.current;
+        if (reservedTab && !reservedTab.closed) {
+          reservedTab.location.replace(started.verificationUri);
+        } else if (!window.open(started.verificationUri, "_blank", "noopener,noreferrer")) {
           setPopupBlocked(true);
         }
+        oauthTabRef.current = null;
       }
       waitingForCode = started.mode === "auth-url";
-      if (!waitingForCode) await finishSubscriptionSignIn(started.loginId, controller);
+      if (!waitingForCode) {
+        oauthTabRef.current?.close();
+        oauthTabRef.current = null;
+        await finishSubscriptionSignIn(started.loginId, controller);
+      }
     } catch (err) {
+      oauthTabRef.current?.close();
+      oauthTabRef.current = null;
       if (controller.signal.aborted) return;
       const loginId = oauthLoginIdRef.current;
       oauthLoginIdRef.current = null;

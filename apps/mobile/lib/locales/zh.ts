@@ -251,7 +251,12 @@ export const ZH_MESSAGES: Record<string, string> = {
   Attach: "附件",
   "Attach file": "添加附件",
   Authorize: "授权",
+  "Authorization callback URL": "授权回调 URL",
   "Authorization code": "授权码",
+  "Choose a current model from this account to finish setup.":
+    "选择此账号当前可用的模型以完成设置。",
+  "Choose a model from this account to finish setup.": "选择此账号的模型以完成设置。",
+  "Then paste the complete callback URL here.": "然后在此处粘贴完整的回调 URL。",
   "Authorization timed out. Please try again.": "授权超时，请重试。",
   "Authorize {name}": "授权 {name}",
   "Bearer token": "Bearer 令牌",

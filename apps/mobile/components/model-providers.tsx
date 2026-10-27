@@ -78,7 +78,10 @@ export function ModelProviders({
           ...(Platform.OS === "ios" ? [{ id: "rename", title: t("Rename") }] : []),
           {
             id: "manage",
-            title: credential.authKind === "oauth" ? t("Sign in again") : t("Replace API key"),
+            title:
+              credential.authKind === "oauth" || credential.authKind === "native"
+                ? t("Sign in again")
+                : t("Replace API key"),
           },
           { id: "disconnect", title: t("Disconnect"), attributes: { destructive: true } },
         ];

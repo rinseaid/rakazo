@@ -88,7 +88,7 @@ export async function openBrowserAuth(
           }
           consumed = true;
           response.end("You can close this tab and return to Rakazo.", close);
-          options.onCallback({ code, state });
+          options.onCallback({ code, state, callbackUrl: target.href });
         });
         server.requestTimeout = 10_000;
         server.headersTimeout = 10_000;

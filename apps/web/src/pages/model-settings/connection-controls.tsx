@@ -86,7 +86,7 @@ export function ConnectionControls({
   const [keyShownFor, setKeyShownFor] = useState<string | null>(null);
   const keyFolded =
     subscriptionSignIn &&
-    credential?.authKind === "oauth" &&
+    (credential?.authKind === "oauth" || credential?.authKind === "native") &&
     keyShownFor !== (selected?.provider ?? null);
   // Opening the fold swaps the summary for the form, so focus moves to the key field.
   useEffect(() => {
@@ -111,14 +111,20 @@ export function ConnectionControls({
                       >
                         {new URL(oauth.verificationUri).hostname}
                       </a>
-                      , then paste the code here.
+                      {oauth.callbackInput === "url"
+                        ? ", then paste the complete callback URL here."
+                        : ", then paste the code here."}
                     </Trans>
                   </p>
                   <div className="mt-3 flex items-center gap-2">
                     <Input
                       value={pasteCode}
                       onChange={(e) => setPasteCode(e.target.value)}
-                      aria-label={t`Authorization code`}
+                      aria-label={
+                        oauth.callbackInput === "url"
+                          ? t`Authorization callback URL`
+                          : t`Authorization code`
+                      }
                       autoComplete="off"
                       spellCheck={false}
                       className="text-foreground md:text-[13px]"
@@ -219,7 +225,7 @@ export function ConnectionControls({
             >
               {oauthPending ? (
                 <Trans>Starting…</Trans>
-              ) : credential?.authKind === "oauth" ? (
+              ) : credential?.authKind === "oauth" || credential?.authKind === "native" ? (
                 <Trans>Sign in again</Trans>
               ) : (
                 (selected?.oauthLabel ?? t`Sign in`)
@@ -230,7 +236,11 @@ export function ConnectionControls({
             type="button"
             variant="outline"
             size="sm"
-            disabled={busy || preflightTesting || credential?.authKind !== "oauth"}
+            disabled={
+              busy ||
+              preflightTesting ||
+              (credential?.authKind !== "oauth" && credential?.authKind !== "native")
+            }
             onClick={() => void testOAuthConnection()}
           >
             {modelPreflightTestingLabel(

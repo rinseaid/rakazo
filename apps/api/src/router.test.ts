@@ -4605,6 +4605,60 @@ describe("model credential persistence", () => {
     expect(missing.status).toBe(404);
   });
 
+  it("probes native models through the exact account connection without an API key", async () => {
+    vi.stubEnv("RAKAZO_GOOGLE_ANTIGRAVITY_ENABLED", "true");
+    const { deps, handler } = persistDeps();
+    const nativeModelCatalog = vi.fn().mockResolvedValue({
+      models: ["fixture-native-model"],
+      generation: "fixture-native-generation-1234",
+    });
+    Object.assign(deps, { nativeModelCatalog });
+    const response = await call(handler, "models/probeCatalog", {
+      provider: "google-antigravity",
+      credentialId: "fixture-connection",
+    });
+    expect(response.status).toBe(200);
+    expect(nativeModelCatalog).toHaveBeenCalledWith({
+      actor,
+      provider: "google-antigravity",
+      credentialId: "fixture-connection",
+      signal: expect.any(AbortSignal),
+      action: "discover",
+    });
+    expect(await response.json()).toEqual({
+      json: {
+        models: ["fixture-native-model"],
+        generation: "fixture-native-generation-1234",
+      },
+    });
+  });
+
+  it("keeps native discovery disabled at the API unless explicitly enabled", async () => {
+    vi.stubEnv("RAKAZO_GOOGLE_ANTIGRAVITY_ENABLED", "false");
+    const { deps, handler } = persistDeps();
+    const nativeModelCatalog = vi.fn();
+    Object.assign(deps, { nativeModelCatalog });
+    const response = await call(handler, "models/probeCatalog", {
+      provider: "google-antigravity",
+      credentialId: "fixture-connection",
+    });
+    expect(response.status).toBe(400);
+    expect(nativeModelCatalog).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { provider: "google-antigravity" },
+    { provider: "google-antigravity", credentialId: "fixture-connection", apiKey: "fake-api-key" },
+    { provider: "openrouter", credentialId: "fixture-connection" },
+  ])("rejects incompatible catalog authentication %#", async (input) => {
+    const { deps, handler } = persistDeps();
+    const nativeModelCatalog = vi.fn();
+    Object.assign(deps, { nativeModelCatalog });
+    const response = await call(handler, "models/probeCatalog", input);
+    expect(response.status).toBe(400);
+    expect(nativeModelCatalog).not.toHaveBeenCalled();
+  });
+
   it("binds an older app's sign-in to the provider's newest connection when it begins", async () => {
     const { deps, handler } = persistDeps();
     const begin = vi.fn(async () => ({
@@ -4637,6 +4691,151 @@ describe("model credential persistence", () => {
     // A new account stays a new account.
     await call(handler, "models/beginOAuth", { provider: "openai-codex", credentialId: null });
     expect(begin).toHaveBeenLastCalledWith(expect.objectContaining({ credentialId: null }));
+  });
+
+  it("keeps native Google OAuth unavailable when the server feature gate is off", async () => {
+    vi.stubEnv("RAKAZO_GOOGLE_ANTIGRAVITY_ENABLED", "false");
+    const { deps, handler } = persistDeps();
+    const begin = vi.fn();
+    Object.assign(deps.oauthLogins, { begin });
+    const response = await call(handler, "models/beginOAuth", {
+      provider: "google-antigravity",
+      deferModelSelection: true,
+    });
+    expect(response.status).toBe(404);
+    expect(begin).not.toHaveBeenCalled();
+  });
+
+  it("persists native account state through the shared encrypted connection path without OAuth markers", async () => {
+    vi.stubEnv("RAKAZO_GOOGLE_ANTIGRAVITY_ENABLED", "true");
+    const { finish, deps, handler } = persistDeps();
+    const nativeSecret = {
+      kind: "native" as const,
+      provider: "google-antigravity",
+      profile: {
+        version: 1 as const,
+        files: [{ path: "account/auth.json", data: '{"token":"fake-native-token"}' }],
+      },
+    };
+    finish.mockImplementation(async (_loginId, _actor, persist) => ({
+      status: "connected" as const,
+      value: await persist({
+        status: "connected",
+        authKind: "native",
+        provider: nativeSecret.provider,
+        nativeSecret,
+        credentialId: null,
+        deferModelSelection: true,
+        label: "Account",
+        makeDefault: false,
+        signal: new AbortController().signal,
+      }),
+    }));
+    const response = await call(handler, "models/finishOAuth", { loginId: "native-login" });
+    expect(response.status).toBe(200);
+    expect(deps.secrets.put).toHaveBeenCalledOnce();
+    const plaintext = vi.mocked(deps.secrets.put).mock.calls[0]?.[0];
+    expect(plaintext && parseModelSecret(plaintext)).toEqual(nativeSecret);
+    expect(deps.prisma.userModelCredential.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          provider: "google-antigravity",
+          label: "Account",
+          userId: actor.userId,
+        }),
+      }),
+    );
+    const body = await response.json();
+    expect(body).toMatchObject({
+      json: {
+        provider: "google-antigravity",
+        authKind: "native",
+        hasKey: false,
+        needsModelSelection: true,
+      },
+    });
+    expect(deps.prisma.userModelPreference.upsert).not.toHaveBeenCalled();
+    expect(JSON.stringify(body)).not.toContain("fake-native-token");
+    expect(JSON.stringify(body)).not.toContain("profile");
+  });
+
+  it.each(["openrouter", "openai-compatible"])(
+    "does not import native credential JSON through %s API-key input",
+    async (provider) => {
+      const { deps, handler } = persistDeps();
+      const apiKey = JSON.stringify({
+        kind: "native",
+        provider: "google-antigravity",
+        profile: { version: 1, files: [{ path: "auth.json", data: "fake-native-state" }] },
+      });
+      const response = await call(handler, "models/connect", {
+        provider,
+        apiKey,
+        ...(provider === "openai-compatible"
+          ? { baseUrl: "https://example.invalid/v1", modelId: "fake-model" }
+          : {}),
+      });
+      expect(response.status).toBe(400);
+      expect(deps.secrets.put).not.toHaveBeenCalled();
+      expect(deps.prisma.userModelCredential.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it("never gives a native sign-in an unrelated deployment default model", async () => {
+    vi.stubEnv("RAKAZO_GOOGLE_ANTIGRAVITY_ENABLED", "true");
+    const { finish, deps, handler } = persistDeps({
+      envDefaultModel: "unrelated/deployment-model",
+    });
+    finish.mockImplementation(async (_loginId, _actor, persist) => ({
+      status: "connected" as const,
+      value: await persist({
+        status: "connected",
+        authKind: "native",
+        provider: "google-antigravity",
+        nativeSecret: {
+          kind: "native",
+          provider: "google-antigravity",
+          profile: { version: 1, files: [{ path: "auth.json", data: "fake-native-data" }] },
+        },
+        credentialId: null,
+        deferModelSelection: true,
+        signal: new AbortController().signal,
+      }),
+    }));
+    const response = await call(handler, "models/finishOAuth", { loginId: "native-login" });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ json: { needsModelSelection: true } });
+    expect(body.json).not.toHaveProperty("modelId");
+    expect(deps.prisma.userModelPreference.upsert).not.toHaveBeenCalled();
+    expect(deps.prisma.userModelCredential.create).toHaveBeenCalledOnce();
+  });
+
+  it("does not save a canceled native login", async () => {
+    vi.stubEnv("RAKAZO_GOOGLE_ANTIGRAVITY_ENABLED", "true");
+    const { finish, deps, handler } = persistDeps();
+    const abort = new AbortController();
+    abort.abort(new Error("Sign-in cancelled."));
+    finish.mockImplementation(async (_loginId, _actor, persist) => ({
+      status: "connected" as const,
+      value: await persist({
+        status: "connected",
+        authKind: "native",
+        provider: "google-antigravity",
+        nativeSecret: {
+          kind: "native",
+          provider: "google-antigravity",
+          profile: { version: 1, files: [{ path: "auth.json", data: "fake-native-data" }] },
+        },
+        credentialId: null,
+        deferModelSelection: true,
+        signal: abort.signal,
+      }),
+    }));
+    const response = await call(handler, "models/finishOAuth", { loginId: "native-login" });
+    expect(response.status).not.toBe(200);
+    expect(deps.secrets.put).not.toHaveBeenCalled();
+    expect(deps.prisma.userModelCredential.create).not.toHaveBeenCalled();
   });
 
   it("names a second subscription account by the email it signed in with", async () => {
@@ -6189,7 +6388,12 @@ describe("bot restore computer quota", () => {
       computer,
       $queryRaw,
       $transaction: vi.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
-        callback({ $queryRaw, computer, bot: botApi }),
+        callback({
+          $queryRaw,
+          computer,
+          bot: botApi,
+          accountOperationHost: { count: vi.fn().mockResolvedValue(0) },
+        }),
       ),
     };
     const handler = new RPCHandler(
@@ -6252,6 +6456,7 @@ describe("group restore with archived bots", () => {
       bot,
       chatGroup,
       chatGroupMember: { findMany: vi.fn(async () => archivedBots.map((item) => ({ bot: item }))) },
+      accountOperationHost: { count: vi.fn().mockResolvedValue(0) },
       computer: {
         count: vi.fn(async (args: { where: { id?: string } }) => (args.where.id ? 0 : inUse)),
       },
@@ -6317,6 +6522,7 @@ describe("group restore with archived bots", () => {
 
 afterEach(() => {
   delete process.env.SANDBOX_MAX_COMPUTERS_PER_USER;
+  vi.unstubAllEnvs();
 });
 
 describe("routine live Codex model validation", () => {

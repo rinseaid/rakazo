@@ -49,8 +49,8 @@ export function legacyTeamHomeKey(spaceId: string) {
   return `team-${spaceId}`;
 }
 
-type ComputerDb = Pick<PrismaClient, "computer">;
-type ComputerTx = Pick<Prisma.TransactionClient, "computer" | "$queryRaw">;
+type ComputerDb = Pick<PrismaClient, "computer" | "accountOperationHost">;
+type ComputerTx = Pick<Prisma.TransactionClient, "computer" | "accountOperationHost" | "$queryRaw">;
 type ComputerClient = ComputerDb & Partial<Pick<PrismaClient, "$transaction" | "$queryRaw">>;
 type RestoreTx = ComputerTx & Pick<Prisma.TransactionClient, "bot">;
 type RestoreClient = ComputerClient & Pick<PrismaClient, "bot">;
@@ -90,13 +90,13 @@ export class ComputerLimitError extends Error {
  * new computer in the same transaction leaves its old row behind, so that
  * intermediate reference must not count against the final live set.
  */
-async function countInUseComputersForUser(
+export async function countInUseComputersForUser(
   prisma: ComputerDb & Partial<Pick<PrismaClient, "$queryRaw">>,
   userId: string,
   excludeBotId?: string,
 ): Promise<number> {
-  const count = () =>
-    prisma.computer.count({
+  const count = async () => {
+    const computers = await prisma.computer.count({
       where: {
         userId,
         bots: {
@@ -106,6 +106,10 @@ async function countInUseComputersForUser(
         },
       },
     });
+    // Expiry does not prove destruction: every unresolved account host holds quota.
+    const accounts = await prisma.accountOperationHost.count({ where: { userId } });
+    return computers + accounts;
+  };
   // The quota is per person, so it counts the computers of all their Spaces.
   const reason = "computer quota across the user's Spaces";
   return prisma.$queryRaw
@@ -117,7 +121,7 @@ async function countInUseComputersForUser(
  * Serialize existence check + in-use count + Computer create for one user.
  * Seed 1 keeps this keyspace apart from lockSpaceForContentCreation (seed 0).
  */
-async function lockUserForComputerQuota(
+export async function lockUserForComputerQuota(
   tx: Pick<Prisma.TransactionClient, "$queryRaw">,
   userId: string,
 ): Promise<void> {

@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import {
   boundedSandboxCommandTimeoutMs,
+  MAX_SANDBOX_COMMAND_TIMEOUT_MS,
   readBoundedJsonResponse,
   resolveSupervisorToken,
   uploadSizeFromEnv,
@@ -20,6 +21,7 @@ import Docker from "dockerode";
 import { Hono, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
+import { createAccountHostRoutes } from "./account-hosts.js";
 import type { ComputerEgressMode } from "./computer-spec.js";
 import {
   assertVolumeSubpathSupport,
@@ -58,6 +60,7 @@ import {
 } from "./computer-spec.js";
 import { EgressNotEnforced, verifyRestrictedEgress } from "./egress-probe.js";
 import { assertComputerHomeWritable } from "./home-ownership.js";
+import { processChannel, processFrames } from "./process-channel.js";
 import {
   assertRequestIdentity,
   attemptComputerControl,
@@ -156,6 +159,8 @@ export function supervisorFileWriteSchema(maxBytes = maxUploadSizeBytes) {
 }
 
 const limitSupervisorRequestBody: MiddlewareHandler = async (c, next) => {
+  // Duplex IO is bounded frame-by-frame rather than by total session bytes.
+  if (c.req.method === "POST" && /^\/computers\/[^/]+\/process$/.test(c.req.path)) return next();
   return bodyLimit({
     maxSize: supervisorRequestBodyLimit(c.req.method, c.req.path),
     onError: (context) => context.json({ error: "Request body is too large." }, 413),
@@ -197,6 +202,17 @@ app.use("/computers/*", async (c, next) => {
 });
 app.use("/computers", limitSupervisorRequestBody);
 app.use("/computers/*", limitSupervisorRequestBody);
+
+const accountHosts = createAccountHostRoutes({
+  docker,
+  image: COMPUTER_IMAGE,
+  token: supervisorToken,
+  withSpaceLock: withSpaceComputerLock,
+  countSpaceContainers,
+  spaceLimit: resolveSpaceComputerLimit,
+  prepareNetwork: () => verifyRestrictedEgress(docker, COMPUTER_IMAGE),
+});
+app.route("/account-hosts", accountHosts.app);
 
 app.post("/computers", async (c) => {
   const body = z
@@ -390,6 +406,47 @@ app.get("/computers/:id", async (c) => {
     const message = error instanceof Error ? error.message : String(error);
     return c.json({ error: message }, 404);
   }
+});
+
+app.post("/computers/:id/process", async (c) => {
+  if (!c.req.raw.body) return c.json({ error: "Missing process input" }, 400);
+  const frames = processFrames(c.req.raw.body);
+  const first = await frames.next();
+  const request = z
+    .object({
+      type: z.literal("start"),
+      argv: z.array(z.string().max(4096)).min(1).max(128),
+      cwd: z.string().max(4096).optional(),
+      env: z.record(z.string(), z.string()).optional(),
+      timeoutMs: z.number().int().positive().optional(),
+    })
+    .parse(first.value);
+  const { container, info } = await managedContainer(
+    c.req.param("id"),
+    c.req.header("x-rakazo-bot-id"),
+    c.req.header("x-rakazo-space-id"),
+  );
+  if (!info.State.Running) return c.json({ error: "computer is not running" }, 409);
+  const timeoutMs = boundedSandboxCommandTimeoutMs(request.timeoutMs);
+  const id = c.req.param("id");
+  const screenId = c.req.header("x-rakazo-screen-id") || c.req.header("x-rakazo-bot-id") || id;
+  const layout = screenPorts(computerScreens.get(id)?.get(screenId)?.index ?? 0);
+  c.req.raw.signal.throwIfAborted();
+  const exec = await container.exec({
+    Cmd: ["python3", "/usr/local/bin/rakazo-process", String(timeoutMs), ...request.argv],
+    AttachStdin: true,
+    AttachStdout: true,
+    AttachStderr: true,
+    WorkingDir: request.cwd ?? "/home/rakazo",
+    Env: [
+      ...computerCommandEnv(layout),
+      ...Object.entries(request.env ?? {}).map(([key, value]) => `${key}=${value}`),
+    ],
+  });
+  const stream = await exec.start({ hijack: true, stdin: true });
+  return new Response(processChannel(exec, stream, frames, c.req.raw.signal), {
+    headers: { "content-type": "application/x-ndjson", "cache-control": "no-store" },
+  });
 });
 
 app.post("/computers/:id/exec", async (c) => {
@@ -1096,6 +1153,12 @@ app.delete("/computers/:id", async (c) => {
   }
 });
 
+// Duplex request bodies remain open for the command lifetime. Keep a finite existing
+// command bound plus cleanup grace; ordinary requests retain body/header limits.
+export const supervisorHttpOptions = {
+  requestTimeout: MAX_SANDBOX_COMMAND_TIMEOUT_MS + 15_000,
+};
+
 function startSupervisor() {
   const logger = createRootLogger(SERVICE_NAMES.supervisor);
   // Resolve the ceilings before binding the port. They are otherwise parsed inside
@@ -1118,15 +1181,26 @@ function startSupervisor() {
   void reclaimIdleComputerNetworks().catch((error) => {
     logger.error("computer network reclaim failed", error);
   });
+  const sweepAccountHosts = () =>
+    void accountHosts.sweep().catch(() => {
+      logger.warn("account host cleanup incomplete");
+    });
+  sweepAccountHosts();
+  const accountHostSweep = setInterval(sweepAccountHosts, 30_000);
+  accountHostSweep.unref();
   const port = Number(process.env.SUPERVISOR_PORT ?? 7091);
   const hostname = process.env.SUPERVISOR_HOST ?? "127.0.0.1";
-  const server = serve({ fetch: app.fetch, hostname, port }, () => {
-    logger.info("supervisor listening", { "http.host": hostname, "http.port": port });
-  });
+  const server = serve(
+    { fetch: app.fetch, hostname, port, serverOptions: supervisorHttpOptions },
+    () => {
+      logger.info("supervisor listening", { "http.host": hostname, "http.port": port });
+    },
+  );
   let stopping = false;
   const shutdown = async () => {
     if (stopping) return;
     stopping = true;
+    clearInterval(accountHostSweep);
     await closeListeningServer(server);
     await logger.flush({ timeoutMs: 2_000 });
     process.exit(0);
@@ -1266,6 +1340,8 @@ async function isManagedSpaceContainer(
   spaceId: string,
 ): Promise<boolean> {
   const labels = item.Labels;
+  if (labels?.["rakazo.accountHostLaunch"] === "1" || labels?.["rakazo.accountHostClosed"] === "1")
+    return false;
   if (labels) {
     const listedSpaceId = labels["rakazo.spaceId"] ?? labels["rakazo.workspaceId"];
     // Labeled for another space (or no space identity) cannot count toward this cap.
@@ -1277,6 +1353,11 @@ async function isManagedSpaceContainer(
   try {
     const info = await docker.getContainer(item.Id).inspect();
     const infoLabels = info.Config?.Labels ?? {};
+    if (
+      infoLabels["rakazo.accountHostLaunch"] === "1" ||
+      infoLabels["rakazo.accountHostClosed"] === "1"
+    )
+      return false;
     const managed =
       infoLabels["rakazo.managed"] === "true" || info.Config?.Image === COMPUTER_IMAGE;
     const infoSpaceId = infoLabels["rakazo.spaceId"] ?? infoLabels["rakazo.workspaceId"];
@@ -1436,8 +1517,13 @@ async function ensureManagedScreenAttempt(
   };
 }
 
-function isRakazoContainer(info: Docker.ContainerInspectInfo, botId: string, spaceId: string) {
+export function isRakazoContainer(
+  info: Docker.ContainerInspectInfo,
+  botId: string,
+  spaceId: string,
+) {
   const labels = info.Config.Labels ?? {};
+  if (labels["rakazo.accountHost"]) return false;
   const managed = labels["rakazo.managed"] === "true" || info.Config.Image === COMPUTER_IMAGE;
   return managed && hasComputerIdentity(labels, botId, spaceId);
 }

@@ -33,6 +33,7 @@ import type { ModelRoleConnectIntent } from "./ModelRoleSettings";
 import { ModelRoleSettings } from "./ModelRoleSettings";
 import { CompatibleModelFields } from "./model-settings/compatible-model-fields";
 import { CompatibleKeyControls, ConnectionControls } from "./model-settings/connection-controls";
+import { ModelPicker } from "./model-settings/model-picker";
 import { ConnectionNameField, ProvidersSection } from "./model-settings/providers-section";
 import type { ConnectableProvider } from "./model-settings/role-model-picker";
 import { SpaceBotsModelNotice } from "./model-settings/space-bots-model";
@@ -75,6 +76,8 @@ export function ModelSettingsOverlay({
     loading,
     maxTokens,
     me,
+    modelId,
+    modelsForProvider,
     notice,
     pending,
     provider,
@@ -84,6 +87,7 @@ export function ModelSettingsOverlay({
     selectedProviderName,
     setConfirmDisconnect,
     setMaxTokens,
+    stageCatalogModelId,
     setNotice,
     settingsDirty,
   } = model;
@@ -138,6 +142,16 @@ export function ModelSettingsOverlay({
     credential &&
       (!isOpenAiCompatible || savedCompatibleEndpointMatches(baseUrl, credential.baseUrl)),
   );
+  const nativeModelChoices =
+    provider === "google-antigravity" && credential?.authKind === "native"
+      ? modelsForProvider.filter(
+          (entry) => !entry.placeholder && entry.credentialIds?.includes(credential.id),
+        )
+      : [];
+  const nativeModelChanged =
+    provider === "google-antigravity" &&
+    credential?.authKind === "native" &&
+    modelId !== (credential.modelId ?? "");
 
   /** Opens a connection by id, or connects a new one for the provider. */
   function openConnection(
@@ -186,6 +200,26 @@ export function ModelSettingsOverlay({
       </>
     ) : credential ? (
       <>
+        {credential.authKind === "native" ? (
+          <div className="mb-4">
+            <span className="text-[13.5px] text-muted-foreground">
+              <Trans>Model</Trans>
+            </span>
+            <ModelPicker
+              options={nativeModelChoices}
+              value={modelId}
+              provider={provider}
+              disabled={busy}
+              placeholder={t`Choose a model from this account`}
+              onChange={(id) => stageCatalogModelId(id)}
+            />
+            {!nativeModelChoices.length ? (
+              <p className="mt-2 text-[13px] text-muted-foreground">
+                <Trans>Sign in to discover models for this account.</Trans>
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <ConnectionControls {...model} />
         <ModelThinkingOptions
           showThinking={false}
@@ -204,8 +238,11 @@ export function ModelSettingsOverlay({
             variant="secondary"
             size="sm"
             className="mt-4"
-            disabled={busy}
-            onClick={() => void connectKey({ settingsOnly: true })}
+            disabled={
+              busy ||
+              (nativeModelChanged && (!modelId || !selected || selected.placeholder === true))
+            }
+            onClick={() => void connectKey({ settingsOnly: !nativeModelChanged })}
           >
             {pending === "settings" ? <Trans>Saving…</Trans> : <Trans>Save</Trans>}
           </Button>

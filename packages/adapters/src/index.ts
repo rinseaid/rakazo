@@ -1,3 +1,5 @@
+export * from "./account-operation-host.js";
+export * from "./acp-model-discovery.js";
 export * from "./agent-connections.js";
 export * from "./agent-environment.js";
 export * from "./agent-import-settings.js";
@@ -68,12 +70,14 @@ export * from "./favicon.js";
 export * from "./fish-audio-voice.js";
 export * from "./fleet-tools.js";
 export * from "./github-webhook-emulator.js";
+export * from "./google-acp-remote.js";
 export * from "./graphql-connectors.js";
 export * from "./group-handoff.js";
 export * from "./home.js";
 export * from "./home-object-store.js";
 export { HonchoMemoryProvider } from "./honcho-memory-provider.js";
 export * from "./host-aware-sandbox.js";
+export * from "./hosted-native-account.js";
 export * from "./http-decisions.js";
 export * from "./infisical-secret-store.js";
 export * from "./installed-connectors.js";
@@ -102,6 +106,12 @@ export * from "./messaging-team-chat-emulator.js";
 export * from "./model-connect.js";
 export { hostedModelCreditObserver } from "./model-credit-observer.js";
 export * from "./model-credit-reconciler.js";
+export {
+  GOOGLE_ANTIGRAVITY_PLACEHOLDER_MODEL_ID,
+  GOOGLE_ANTIGRAVITY_PROVIDER_ID,
+  isNativeModelProvider,
+  nativeModelProviderEnabled,
+} from "./model-native-auth.js";
 export * from "./model-roles.js";
 export * from "./model-selection.js";
 export * from "./model-vision.js";

@@ -119,7 +119,7 @@ function imageDimensions(bytes: Buffer, mimeType: string): [number, number, numb
   }
 }
 
-function gifFrameTokens(bytes: Buffer): number | undefined {
+function gifFrameTokens(bytes: Buffer, maxFrames = Number.POSITIVE_INFINITY): number | undefined {
   if (
     bytes.length < 14 ||
     (bytes.toString("ascii", 0, 6) !== "GIF87a" && bytes.toString("ascii", 0, 6) !== "GIF89a")
@@ -133,6 +133,7 @@ function gifFrameTokens(bytes: Buffer): number | undefined {
   if ((bytes[10]! & 0x80) !== 0) offset += 3 * 2 ** ((bytes[10]! & 7) + 1);
   if (offset >= bytes.length) return;
   let tokens = 0;
+  let frames = 0;
   while (offset < bytes.length) {
     const block = bytes[offset++];
     if (block === 0x3b) return tokens > 0 ? tokens : undefined;
@@ -148,7 +149,8 @@ function gifFrameTokens(bytes: Buffer): number | undefined {
       if (width < 1 || height < 1 || left + width > canvasWidth || top + height > canvasHeight)
         return;
       // A delta frame is composited onto the logical-screen canvas.
-      tokens += canvasTokens;
+      if (frames < maxFrames) tokens += canvasTokens;
+      frames += 1;
       if (!Number.isSafeInteger(tokens)) return Number.MAX_SAFE_INTEGER;
       const flags = bytes[offset + 8]!;
       offset += 9;
@@ -214,13 +216,16 @@ function animatedWebpFrameTokens(bytes: Buffer): number | undefined {
 }
 
 /** Bounded-resolution context planning estimate, independent of provider billing. */
-export function estimatePiImageTokens(image: object): number | undefined {
+export function estimatePiImageTokens(
+  image: object,
+  options: { maxGifFrames?: number } = {},
+): number | undefined {
   if (!("data" in image) || typeof image.data !== "string") return;
   if (!("mimeType" in image) || typeof image.mimeType !== "string") return;
   // GIF frame descriptors can occur throughout the file. Decode only within the attachment limit.
   if (image.mimeType === "image/gif") {
     if (image.data.length > ATTACHMENT_MAX_BASE64_LENGTH) return;
-    return gifFrameTokens(Buffer.from(image.data, "base64"));
+    return gifFrameTokens(Buffer.from(image.data, "base64"), options.maxGifFrames);
   }
   if (image.mimeType === "image/webp" && image.data.length <= ATTACHMENT_MAX_BASE64_LENGTH) {
     const header = Buffer.from(image.data.slice(0, 48), "base64");
@@ -236,4 +241,9 @@ export function estimatePiImageTokens(image: object): number | undefined {
   const [width, height, frames] = dimensions;
   const tokens = imageFrameTokens(width, height) * frames;
   return Number.isSafeInteger(tokens) ? tokens : Number.MAX_SAFE_INTEGER;
+}
+
+/** Match Antigravity's bounded GIF frame sampling during pre-provider context selection. */
+export function estimateGoogleAcpImageTokens(image: object): number | undefined {
+  return estimatePiImageTokens(image, { maxGifFrames: 8 });
 }

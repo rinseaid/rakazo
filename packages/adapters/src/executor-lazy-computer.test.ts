@@ -200,6 +200,7 @@ async function runRoutine(
     },
   };
   const sandbox = {
+    openProcess: vi.fn(),
     describe: () => ({ id: "e2b", capabilities: { graphical: false } }),
     environment: options.native
       ? vi.fn(async () => {
@@ -285,6 +286,15 @@ afterEach(() => {
 });
 
 describe("run computer provisioning", () => {
+  it("does not expose the bot computer as a native model process capability", async () => {
+    const { sandbox, finalizeRun, runtimeRun } = await runRoutine([], { attachments: "file" });
+    expect(finalizeRun).toHaveBeenCalledWith(expect.objectContaining({ outcome: "completed" }));
+    expect(runtimeRun.mock.calls[0]![0]).not.toHaveProperty("openModelProcess");
+    expect(provisionComputer).not.toHaveBeenCalled();
+    expect(sandbox.openProcess).not.toHaveBeenCalled();
+    expect(sandbox.writeFile).not.toHaveBeenCalled();
+  });
+
   it("retries handed-off setup failures with durable attempt accounting and backoff", async () => {
     const onRunStarted = vi.fn();
     const { run, enqueue, runtimeRun, prisma } = await runRoutine([], {

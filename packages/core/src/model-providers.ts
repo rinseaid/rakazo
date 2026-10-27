@@ -337,6 +337,8 @@ export type ChatModelChoice = {
   label: string;
   provider?: string;
   modelId?: string;
+  /** Per-credential discovery fence for hosted native models. */
+  nativeGeneration?: string;
   providerLabel?: string;
   modelLabel?: string;
   title?: string;

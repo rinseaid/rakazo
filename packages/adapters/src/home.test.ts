@@ -425,29 +425,34 @@ describe("LocalAgentHomeStore path containment", () => {
   });
 
   it("exports and copies internal links, bytes, empty directories, and file modes", async () => {
-    const { root, store, home } = await fixture();
-    const bytes = Buffer.from([0, 255, 127, 10]);
-    await mkdir(path.join(home, "nested/empty"), { recursive: true });
-    await writeFile(path.join(home, "nested/run"), bytes);
-    await chmod(path.join(home, "nested/run"), 0o750);
-    await symlink("nested/run", path.join(home, "linked"));
-    await symlink(home, path.join(home, "nested/loop"), "junction");
+    const originalUmask = process.umask(0o022);
+    try {
+      const { root, store, home } = await fixture();
+      const bytes = Buffer.from([0, 255, 127, 10]);
+      await mkdir(path.join(home, "nested/empty"), { recursive: true });
+      await writeFile(path.join(home, "nested/run"), bytes);
+      await chmod(path.join(home, "nested/run"), 0o750);
+      await symlink("nested/run", path.join(home, "linked"));
+      await symlink(home, path.join(home, "nested/loop"), "junction");
 
-    const files = [];
-    for await (const file of store.exportHome("bot-1", context)) files.push(file);
-    expect(files.map((file) => file.path).sort()).toEqual(["linked", "nested/run"]);
-    for (const file of files) {
-      expect(Buffer.from(file.content)).toEqual(bytes);
-      if (process.platform !== "win32") expect(file.executable).toBe(true);
+      const files = [];
+      for await (const file of store.exportHome("bot-1", context)) files.push(file);
+      expect(files.map((file) => file.path).sort()).toEqual(["linked", "nested/run"]);
+      for (const file of files) {
+        expect(Buffer.from(file.content)).toEqual(bytes);
+        if (process.platform !== "win32") expect(file.executable).toBe(true);
+      }
+      const dest = path.join(root, "checkout");
+      await store.checkout("bot-1", dest, context);
+      expect(await readFile(path.join(dest, "linked"))).toEqual(bytes);
+      expect((await stat(path.join(dest, "nested/empty"))).isDirectory()).toBe(true);
+      if (process.platform !== "win32") {
+        expect((await stat(path.join(dest, "nested/run"))).mode & 0o777).toBe(0o750);
+      }
+      await store.commit("bot-2", dest, context);
+      expect(await readFile(path.join(store.pathFor("bot-2"), "nested/run"))).toEqual(bytes);
+    } finally {
+      process.umask(originalUmask);
     }
-    const dest = path.join(root, "checkout");
-    await store.checkout("bot-1", dest, context);
-    expect(await readFile(path.join(dest, "linked"))).toEqual(bytes);
-    expect((await stat(path.join(dest, "nested/empty"))).isDirectory()).toBe(true);
-    if (process.platform !== "win32") {
-      expect((await stat(path.join(dest, "nested/run"))).mode & 0o777).toBe(0o750);
-    }
-    await store.commit("bot-2", dest, context);
-    expect(await readFile(path.join(store.pathFor("bot-2"), "nested/run"))).toEqual(bytes);
   });
 });

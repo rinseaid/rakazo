@@ -23,6 +23,7 @@ const models = vi.hoisted(() => ({
   rename: vi.fn(),
   setDefault: vi.fn(),
   probeOpenAiCompatible: vi.fn(),
+  probeCatalog: vi.fn(),
   beginOAuth: vi.fn(),
   cancelOAuth: vi.fn(),
   completeOAuth: vi.fn(),
@@ -1217,6 +1218,173 @@ it.each([undefined, "api_key", "oauth"])(
     }
   },
 );
+
+it("keeps native account sign-in open for discovery, then saves an exact-account model before role selection", async () => {
+  const nativeId = "native-model-real";
+  const generation = "generation-native-account-0001";
+  const placeholder = {
+    provider: "google-antigravity",
+    providerName: "Google Antigravity",
+    id: "__google-antigravity-model-required__",
+    label: "Google Antigravity account",
+    billing: "Subscription",
+    auth: "oauth" as const,
+    signIn: "auth-url" as const,
+    oauthLabel: "Sign in with Google Antigravity",
+    placeholder: true,
+  };
+  const model = {
+    provider: "google-antigravity",
+    providerName: "Google Antigravity",
+    id: nativeId,
+    label: "Google Antigravity model",
+    billing: "Subscription",
+    auth: "oauth" as const,
+    signIn: "auth-url" as const,
+    live: true as const,
+    credentialIds: ["native-credential"],
+    nativeGenerationsByCredential: { "native-credential": generation },
+  };
+  let discovered = false;
+  let connectedModelId: string | undefined;
+  models.list.mockImplementation(async () => (discovered ? [placeholder, model] : [placeholder]));
+  models.credentials.mockImplementation(async () =>
+    discovered
+      ? [
+          {
+            id: "native-credential",
+            provider: "google-antigravity",
+            label: "Google Antigravity",
+            authKind: "native",
+            hasKey: false,
+            isDefault: false,
+            ...(connectedModelId ? { modelId: connectedModelId } : {}),
+          },
+        ]
+      : [],
+  );
+  models.probeCatalog.mockImplementation(async () => {
+    discovered = true;
+    return { models: [nativeId], generation };
+  });
+  models.cancelOAuth.mockResolvedValue(undefined);
+  models.beginOAuth.mockResolvedValue({
+    mode: "auth-url",
+    loginId: "native-login",
+    provider: "google-antigravity",
+    verificationUri: "https://accounts.google.test/authorize?state=state-native",
+    expiresInSeconds: 300,
+    callbackInput: "url",
+  });
+  models.completeOAuth.mockResolvedValue({ status: "ready" });
+  models.finishOAuth.mockResolvedValue({
+    id: "native-credential",
+    provider: "google-antigravity",
+    label: "Google Antigravity",
+    hasKey: false,
+    isDefault: false,
+    authKind: "native",
+    needsModelSelection: true,
+  });
+  models.connect.mockImplementation(async (input: Record<string, unknown>) => {
+    connectedModelId = String(input.modelId);
+    return {
+      id: "native-credential",
+      provider: "google-antigravity",
+      label: "Google Antigravity",
+      hasKey: false,
+      isDefault: true,
+      authKind: "native",
+      modelId: connectedModelId,
+    };
+  });
+  const opened = vi.spyOn(window, "open").mockReturnValue(null);
+  const view = await renderSettings();
+  try {
+    await pick("Change Main model", "Google Antigravity");
+    await click(buttons(view.container, "Sign in with Google Antigravity")[0]);
+    expect(models.beginOAuth).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "google-antigravity",
+        credentialId: null,
+        deferModelSelection: true,
+        makeDefault: false,
+      }),
+      expect.anything(),
+    );
+    const beginInput = models.beginOAuth.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(beginInput).not.toHaveProperty("modelId");
+    expect(opened).toHaveBeenCalled();
+    expect(opened.mock.invocationCallOrder[0]).toBeLessThan(
+      models.beginOAuth.mock.invocationCallOrder[0]!,
+    );
+    expect(opened.mock.calls[0]).toEqual(["about:blank", "_blank"]);
+    expect(opened.mock.calls[1]?.[0]).toBe(
+      "https://accounts.google.test/authorize?state=state-native",
+    );
+    const signInLink = Array.from(view.container.querySelectorAll("a")).find(
+      (link) => link.href === "https://accounts.google.test/authorize?state=state-native",
+    );
+    expect(signInLink?.target).toBe("_blank");
+
+    const callbackUrl =
+      "http://127.0.0.1:51182/oauth/callback?code=private-code&state=state-native";
+    const callbackInput = view.container.querySelector<HTMLInputElement>(
+      'input[aria-label="Authorization callback URL"]',
+    );
+    if (!callbackInput) throw new Error("Missing secure callback URL field");
+    await typeInto(callbackInput, callbackUrl);
+    await click(buttons(view.container, "Submit")[0]);
+    await act(async () => {
+      for (let index = 0; index < 20; index += 1) await Promise.resolve();
+    });
+    expect(models.submitOAuthCode).toHaveBeenCalledWith(
+      { loginId: "native-login", code: callbackUrl },
+      expect.anything(),
+    );
+    expect(models.probeCatalog).toHaveBeenCalledWith({
+      provider: "google-antigravity",
+      credentialId: "native-credential",
+    });
+    expect(view.container.textContent).toContain(
+      "Choose a model from this account to finish setup.",
+    );
+    expect(view.container.textContent).not.toContain(callbackUrl);
+
+    const modelPicker = view.container.querySelector<HTMLButtonElement>(
+      'button[role="combobox"][aria-label="Model"]',
+    );
+    await click(modelPicker);
+    await choose("Google Antigravity model");
+    await click(buttons(view.container, "Save")[0]);
+    expect(models.connect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "google-antigravity",
+        credentialId: "native-credential",
+        modelId: nativeId,
+        nativeGeneration: generation,
+      }),
+    );
+    expect(models.setRole).not.toHaveBeenCalled();
+    expect(pickerOptions()).toContain("Google Antigravity model");
+    await choose("Google Antigravity model");
+    expect(models.setRole).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: "main",
+        primary: expect.objectContaining({
+          provider: "google-antigravity",
+          modelId: nativeId,
+          credentialId: "native-credential",
+          nativeGeneration: generation,
+        }),
+      }),
+      expect.anything(),
+    );
+  } finally {
+    opened.mockRestore();
+    await view.unmount();
+  }
+});
 
 it("folds the key form behind Or paste an API key once a subscription is signed in", async () => {
   vi.mocked(rpc.me).mockResolvedValue(account("anthropic", "claude-fixture"));

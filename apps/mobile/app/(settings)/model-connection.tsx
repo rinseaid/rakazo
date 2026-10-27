@@ -111,6 +111,10 @@ export default function ModelConnection() {
   // The provider whose optional personal-key form is open.
   const [ownKeyProvider, setOwnKeyProvider] = useState<string | null>(null);
   const [modelId, setModelId] = useState("");
+  const [nativeGeneration, setNativeGeneration] = useState<{
+    credentialId: string;
+    generation: string;
+  } | null>(null);
   const [enabledModelIds, setEnabledModelIds] = useState<string[]>([]);
   const [apiKey, setApiKey] = useState("");
   const [accountId, setAccountId] = useState("");
@@ -203,26 +207,55 @@ export default function ModelConnection() {
     async (preferred: ModelSelection = {}) => {
       if (!request) throw new Error(t("Could not load model settings"));
       setError(null);
-      const [nextMe, nextCatalog, nextCredentials] = await Promise.all([
+      const [nextMe, listedCatalog, nextCredentials] = await Promise.all([
         rpc<MobileMe>("me"),
         rpc<MobileModel[]>("models/list"),
         rpc<MobileModelCredential[]>("models/credentials"),
       ]);
       const nextProvider = request.provider;
       const nextCredential = nextCredentials.find((entry) => entry.id === credentialIdRef.current);
+      let nextCatalog = listedCatalog;
+      let nativeDiscovery: { models: string[]; generation: string } | undefined;
+      if (nextProvider === "google-antigravity" && nextCredential?.authKind === "native") {
+        nativeDiscovery = await rpc<{ models: string[]; generation: string }>(
+          "models/probeCatalog",
+          { provider: nextProvider, credentialId: nextCredential.id },
+        );
+        setNativeGeneration({
+          credentialId: nextCredential.id,
+          generation: nativeDiscovery.generation,
+        });
+        nextCatalog = await rpc<MobileModel[]>("models/list");
+      } else {
+        setNativeGeneration(null);
+      }
+      const nativeSavedModel =
+        nextProvider === "google-antigravity" && nextCredential?.authKind === "native"
+          ? preferred.modelId?.trim() || nextCredential.modelId || ""
+          : undefined;
       const nextModel =
-        nextProvider === OPENAI_COMPATIBLE_PROVIDER_ID
-          ? preferred.modelId?.trim() ||
-            nextCredential?.modelId ||
-            (nextMe.defaultProvider === OPENAI_COMPATIBLE_PROVIDER_ID ? nextMe.defaultModel : "") ||
-            ""
-          : pickCatalogModelId(
-              nextCatalog,
-              nextProvider,
-              preferred.modelId ||
-                nextCredential?.modelId ||
-                (nextProvider === nextMe.defaultProvider ? nextMe.defaultModel : null),
-            );
+        nativeSavedModel !== undefined
+          ? nativeSavedModel && nativeDiscovery?.models.includes(nativeSavedModel)
+            ? nativeSavedModel
+            : ""
+          : nextProvider === OPENAI_COMPATIBLE_PROVIDER_ID
+            ? preferred.modelId?.trim() ||
+              nextCredential?.modelId ||
+              (nextMe.defaultProvider === OPENAI_COMPATIBLE_PROVIDER_ID
+                ? nextMe.defaultModel
+                : "") ||
+              ""
+            : nextProvider === "google-antigravity" &&
+                nextCredential?.authKind === "native" &&
+                !nextCredential.modelId
+              ? ""
+              : pickCatalogModelId(
+                  nextCatalog,
+                  nextProvider,
+                  preferred.modelId ||
+                    nextCredential?.modelId ||
+                    (nextProvider === nextMe.defaultProvider ? nextMe.defaultModel : null),
+                );
       meRef.current = nextMe;
       setMe(nextMe);
       setCatalog(nextCatalog);
@@ -258,7 +291,7 @@ export default function ModelConnection() {
       setMaxTokens(connectionMaxTokensField(nextProvider, nextCredential?.maxTokens));
       setAccountId(nextCredential?.accountId ?? "");
       setGatewayId(nextCredential?.gatewayId ?? "");
-      return nextMe;
+      return { me: nextMe, nativeDiscovery };
     },
     [request, rpc, t],
   );
@@ -277,8 +310,15 @@ export default function ModelConnection() {
   );
 
   const modelsForProvider = catalog.filter((entry) => entry.provider === provider);
-  const selected = modelsForProvider.find((entry) => entry.id === modelId) ?? modelsForProvider[0];
   const credential = credentials.find((entry) => entry.id === credentialId);
+  const selected =
+    modelsForProvider.find((entry) => entry.id === modelId) ??
+    (provider === "google-antigravity" && credentialId
+      ? (modelsForProvider.find(
+          (entry) => !entry.placeholder && entry.credentialIds?.includes(credentialId),
+        ) ?? modelsForProvider.find((entry) => entry.placeholder))
+      : undefined) ??
+    modelsForProvider[0];
   const providerName = selected?.providerName ?? selected?.provider ?? "";
   const selectedProviderLabel = credential
     ? connectionDisplayName(credential, providerName)
@@ -312,6 +352,16 @@ export default function ModelConnection() {
       headerRows !== null && !ModelHeaderRowsSchema.safeParse(headerRows).success ? "" : modelId,
   });
   const limitsDirty = maxTokens !== connectionMaxTokensField(provider, credential?.maxTokens);
+  const nativeModelChoices =
+    provider === "google-antigravity" && credential?.authKind === "native"
+      ? modelsForProvider.filter(
+          (entry) => !entry.placeholder && entry.credentialIds?.includes(credential.id),
+        )
+      : [];
+  const nativeModelDirty =
+    provider === "google-antigravity" &&
+    credential?.authKind === "native" &&
+    modelId !== (credential.modelId ?? "");
   const gatewayDirty =
     accountId.trim() !== (credential?.accountId ?? "") ||
     gatewayId.trim() !== (credential?.gatewayId ?? "");
@@ -397,6 +447,11 @@ export default function ModelConnection() {
 
   async function connectKey(limitsOnly = false) {
     if (!selected) return;
+    if (
+      provider === "google-antigravity" &&
+      (!modelId || selected.placeholder || selected.id !== modelId)
+    )
+      return;
     const anchor = limitsOnly ? "limits" : "connection";
     const savingLimitOnly = !isOpenAiCompatible && (limitsOnly || !apiKey.trim());
     const activeModelId = isOpenAiCompatible ? modelId.trim() : selected.id;
@@ -460,6 +515,18 @@ export default function ModelConnection() {
     if (isOpenAiCompatible && parsedMaxTokens === undefined) return;
     setPending("connect");
     try {
+      let currentNativeGeneration =
+        nativeGeneration && nativeGeneration.credentialId === credential?.id
+          ? nativeGeneration.generation
+          : undefined;
+      if (provider === "google-antigravity" && credential?.id && !currentNativeGeneration) {
+        const discovery = await rpc<{ models: string[]; generation: string }>(
+          "models/probeCatalog",
+          { provider, credentialId: credential.id },
+        );
+        currentNativeGeneration = discovery.generation;
+        setNativeGeneration({ credentialId: credential.id, generation: discovery.generation });
+      }
       const saved = await rpc<MobileModelCredential>(
         "models/connect",
         isOpenAiCompatible
@@ -493,7 +560,10 @@ export default function ModelConnection() {
               ...(!savingLimitOnly || modelChanged ? { thinkingLevel: stagedThinking } : {}),
               makeDefault,
               scope: target.scope,
-              maxTokens: parsedMaxTokens ?? null,
+              ...(savingLimitOnly && !limitsDirty ? {} : { maxTokens: parsedMaxTokens ?? null }),
+              ...(provider === "google-antigravity" && currentNativeGeneration
+                ? { nativeGeneration: currentNativeGeneration }
+                : {}),
               label: selected.providerName ?? selected.provider,
               credentialId: credentialIdRef.current,
             },
@@ -501,7 +571,8 @@ export default function ModelConnection() {
       credentialIdRef.current = saved.id;
       setCredentialId(saved.id);
       if (!limitsOnly) setApiKey("");
-      if (!savingLimitOnly && (await finishConnecting(activeModelId, saved.id))) return;
+      if ((!savingLimitOnly || modelChanged) && (await finishConnecting(activeModelId, saved.id)))
+        return;
       await load({ modelId });
       publishFeedback(anchor, { notice: t("Saved.") });
     } catch (err) {
@@ -516,7 +587,7 @@ export default function ModelConnection() {
   async function finishSubscriptionSignIn(loginId: string, controller: AbortController) {
     await waitForModelOAuth(loginId, controller.signal, rpc);
     if (controller.signal.aborted) return;
-    const saved = await rpc<MobileModelCredential>(
+    const saved = await rpc<MobileModelCredential & { needsModelSelection?: true }>(
       "models/finishOAuth",
       { loginId },
       { signal: controller.signal },
@@ -526,6 +597,26 @@ export default function ModelConnection() {
     credentialIdRef.current = saved.id;
     setCredentialId(saved.id);
     setOauth(null);
+    if (saved.authKind === "native") {
+      const loaded = await load({ modelId: saved.modelId ?? "" });
+      if (controller.signal.aborted) return;
+      if (saved.needsModelSelection || !saved.modelId) {
+        publishFeedback("connection", {
+          notice: t("Choose a model from this account to finish setup."),
+        });
+        return;
+      }
+      if (
+        loaded.nativeDiscovery?.models.includes(saved.modelId) &&
+        (await finishConnecting(saved.modelId, saved.id, loaded.nativeDiscovery.generation))
+      )
+        return;
+      if (!loaded.nativeDiscovery?.models.includes(saved.modelId))
+        publishFeedback("connection", {
+          notice: t("Choose a current model from this account to finish setup."),
+        });
+      return;
+    }
     if (await finishConnecting(selected?.id ?? modelId, saved.id)) return;
     await load({ modelId });
     if (controller.signal.aborted) return;
@@ -536,12 +627,18 @@ export default function ModelConnection() {
   async function finishConnecting(
     connectedModelId: string,
     connectedCredentialId: string,
+    connectedNativeGeneration?: string,
   ): Promise<boolean> {
     if (!request?.onConnected || !connectedModelId) return false;
     const next = await request.onConnected({
       provider,
       modelId: connectedModelId,
       credentialId: connectedCredentialId,
+      ...(connectedNativeGeneration
+        ? { nativeGeneration: connectedNativeGeneration }
+        : nativeGeneration?.credentialId === connectedCredentialId
+          ? { nativeGeneration: nativeGeneration.generation }
+          : {}),
     });
     if (next) router.replace(next);
     else router.back();
@@ -550,6 +647,7 @@ export default function ModelConnection() {
 
   async function startSubscriptionSignIn() {
     if (!selected) return;
+    const deferModelSelection = provider === "google-antigravity";
     clearFeedback();
     setOauthPending(true);
     const controller = new AbortController();
@@ -560,12 +658,13 @@ export default function ModelConnection() {
         "models/beginOAuth",
         {
           provider: selected.provider,
-          modelId: selected.id,
+          ...(!deferModelSelection ? { modelId: selected.id } : {}),
+          ...(deferModelSelection ? { deferModelSelection: true } : {}),
           thinkingLevel: clampCatalogThinkingLevel(
             thinkingLevel,
             selected.thinkingLevels,
           ) as ThinkingLevel | null,
-          makeDefault,
+          makeDefault: provider === "google-antigravity" ? false : makeDefault,
           scope: target.scope,
           label: selected.providerName ?? selected.provider,
           credentialId: credentialIdRef.current,
@@ -1001,6 +1100,36 @@ export default function ModelConnection() {
   const catalogModelCard =
     !isOpenAiCompatible && selected && credential ? (
       <>
+        {credential.authKind === "native" ? (
+          <MenuPickerMenu
+            label={t("Model")}
+            value={modelId}
+            choices={[
+              { key: "", label: t("Choose a model") },
+              ...nativeModelChoices.map((entry) => ({ key: entry.id, label: entry.label })),
+            ]}
+            disabled={busy}
+            onChange={(nextModelId) => {
+              setModelId(nextModelId);
+              const entry = nativeModelChoices.find((candidate) => candidate.id === nextModelId);
+              setThinkingLevel(
+                clampCatalogThinkingLevel(
+                  credential.modelId === nextModelId ? credential.thinkingLevel : null,
+                  entry?.thinkingLevels,
+                ) as ThinkingLevel | null,
+              );
+              clearFeedback();
+            }}
+          >
+            <View>
+              <SettingsRow
+                title={t("Model")}
+                value={modelId || t("Choose a model")}
+                chevron="down"
+              />
+            </View>
+          </MenuPickerMenu>
+        ) : null}
         {disclosureRow(t("Advanced"), showAdvanced, () => setShowAdvanced((visible) => !visible))}
         {showAdvanced ? (
           <>
@@ -1013,13 +1142,20 @@ export default function ModelConnection() {
               },
               6,
             )}
-            {credential && limitsDirty ? (
+            {credential && (limitsDirty || nativeModelDirty) ? (
               <NativeActionButton
-                disabled={busy || !cloudflareRoutingReady}
+                disabled={
+                  busy ||
+                  !cloudflareRoutingReady ||
+                  (nativeModelDirty &&
+                    (!modelId ||
+                      selected.placeholder ||
+                      nativeGeneration?.credentialId !== credential.id))
+                }
                 label={
                   pending === "connect" && feedbackAnchor === "limits" ? t("Saving…") : t("Save")
                 }
-                onPress={() => void connectKey(true)}
+                onPress={() => void (nativeModelDirty ? connectKey() : connectKey(true))}
                 prominence="secondary"
                 style={{ marginTop: 12 }}
               />
@@ -1042,9 +1178,17 @@ export default function ModelConnection() {
                   <Pressable onPress={() => void Linking.openURL(oauth.verificationUri)}>
                     <Text style={styles.link}>{oauth.verificationUri}</Text>
                   </Pressable>
-                  <Text style={styles.secondary}>{t("Then paste the code here.")}</Text>
+                  <Text style={styles.secondary}>
+                    {oauth.callbackInput === "url"
+                      ? t("Then paste the complete callback URL here.")
+                      : t("Then paste the code here.")}
+                  </Text>
                   <TextInput
-                    accessibilityLabel={t("Authorization code")}
+                    accessibilityLabel={
+                      oauth.callbackInput === "url"
+                        ? t("Authorization callback URL")
+                        : t("Authorization code")
+                    }
                     value={pasteCode}
                     onChangeText={setPasteCode}
                     autoCapitalize="none"

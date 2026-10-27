@@ -34,7 +34,8 @@ contextBridge.exposeInMainWorld("rakazoDesktop", {
     open: (url) => ipcRenderer.invoke("desktop.oauth.open", url),
     cancel: (url) => ipcRenderer.invoke("desktop.oauth.cancel", url),
     onCallback: (listener) => {
-      // The IpcRendererEvent stays in the preload: the renderer only sees the code.
+      // The IpcRendererEvent stays in the preload; callback secrets are passed
+      // only through this protected app bridge and must never enter chat/logs.
       const handler = (_event, callback) => listener(callback);
       ipcRenderer.on("desktop.oauth.callback", handler);
       return () => ipcRenderer.off("desktop.oauth.callback", handler);

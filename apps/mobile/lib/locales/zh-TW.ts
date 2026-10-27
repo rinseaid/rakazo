@@ -240,7 +240,12 @@ export const ZH_TW_MESSAGES: Record<string, string> = {
   Attach: "附件",
   "Attach file": "新增附件",
   Authorize: "授權",
+  "Authorization callback URL": "授權回呼 URL",
   "Authorization code": "授權碼",
+  "Choose a current model from this account to finish setup.":
+    "選擇此帳戶目前可用的模型以完成設定。",
+  "Choose a model from this account to finish setup.": "選擇此帳戶的模型以完成設定。",
+  "Then paste the complete callback URL here.": "接著在此處貼上完整的回呼 URL。",
   "Authorization timed out. Please try again.": "授權超時，請重試。",
   "Authorize {name}": "授權 {name}",
   "Bearer token": "Bearer 權杖",

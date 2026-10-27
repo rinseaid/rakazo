@@ -1084,6 +1084,44 @@ describe("connected model validation", () => {
       validateConnectedModelChoice(catalogPrisma, noStore, actor, "xai", "undefined"),
     ).resolves.toBe("Unknown model for that provider");
   });
+
+  it("requires discovery when selecting a native model but trusts its saved run choice", async () => {
+    vi.stubEnv("RAKAZO_GOOGLE_ANTIGRAVITY_ENABLED", "true");
+    const prisma = {
+      userModelCredential: {
+        findFirst: vi.fn(async () => ({
+          ...credential("google-antigravity", null),
+          userPreferences: [],
+        })),
+      },
+    } as unknown as PrismaClient;
+    const nativeModelListed = vi.fn(async () => false);
+    try {
+      await expect(
+        validateConnectedModelChoice(
+          prisma,
+          noStore,
+          actor,
+          "google-antigravity",
+          "gemini-3.8-flash",
+          { credentialId: "credential-google-antigravity", nativeModelListed },
+        ),
+      ).resolves.toBe("Rediscover this account's models before selecting one");
+      await expect(
+        validateConnectedModelChoice(
+          prisma,
+          noStore,
+          actor,
+          "google-antigravity",
+          "gemini-3.8-flash",
+          { credentialId: "credential-google-antigravity", trustSavedNativeModel: true },
+        ),
+      ).resolves.toBeUndefined();
+      expect(nativeModelListed).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe("enabled openai-compatible models", () => {

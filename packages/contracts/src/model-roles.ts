@@ -10,6 +10,8 @@ export const ModelRoleChoiceSchema = ModelBackupChoiceSchema.extend({
   thinkingLevel: ThinkingLevelSchema.nullable().optional(),
   /** The connection this row runs on; omitted rows use the provider's connection or the deployment's. */
   credentialId: Id.optional(),
+  /** Current discovery generation when selecting a hosted native account model. */
+  nativeGeneration: z.string().min(16).max(128).optional(),
 });
 export type ModelRoleChoice = z.infer<typeof ModelRoleChoiceSchema>;
 export const ModelRoleSettingsSchema = z.object({

@@ -916,58 +916,35 @@ describe("graphical computer spec", () => {
               expect(childLock.status, childLock.error?.message ?? childLock.stderr).toBe(0);
               expect(readFileSync(prefsPath, "utf8")).toContain('"exit_type":"Normal"');
 
-              const joiner = path.join(bin, "join-cmdline.py");
-              writeFileSync(
-                joiner,
-                [
-                  "import os, time",
-                  'raw = open("/proc/self/cmdline", "rb").read().rstrip(b"\\0")',
-                  'joined = raw.replace(b"\\0", b" ")',
-                  "start = end = None",
-                  'for line in open("/proc/self/maps"):',
-                  '    if "[stack]" in line:',
-                  '        a, b = line.split()[0].split("-")',
-                  "        start, end = int(a, 16), int(b, 16)",
-                  "        break",
-                  'mem = os.open("/proc/self/mem", os.O_RDWR)',
-                  "pos = end",
-                  "found = None",
-                  "while pos > start:",
-                  "    size = min(1024 * 1024, pos - start)",
-                  "    pos -= size",
-                  "    os.lseek(mem, pos, os.SEEK_SET)",
-                  "    data = os.read(mem, size + len(raw))",
-                  "    idx = data.find(raw)",
-                  "    if idx != -1:",
-                  "        found = pos + idx",
-                  "        break",
-                  "if found is None:",
-                  '    raise SystemExit("cmdline not found")',
-                  "os.lseek(mem, found, os.SEEK_SET)",
-                  "os.write(mem, joined)",
-                  "os.close(mem)",
-                  'open(os.environ["JOINED_READY"], "w").write("ready\\n")',
-                  "time.sleep(120)",
-                  "",
-                ].join("\n"),
-              );
               const ready = path.join(temp, "joined-ready");
-              const python = spawnSync("python3", ["-c", "import sys; print(sys.executable)"], {
-                encoding: "utf8",
-              }).stdout.trim();
               const spacedHome = path.join(temp, "home --type=renderer dir");
               const spacedProfile = path.join(spacedHome, ".browser-profiles/chromium");
               const spacedPrefs = path.join(spacedProfile, "Default", "Preferences");
               mkdirSync(path.dirname(spacedPrefs), { recursive: true });
               writeFileSync(spacedPrefs, '{\n  "profile": {\n    "exit_type": "Crashed"\n  }\n}\n');
-              const joined = spawn(python, [joiner, `--user-data-dir=${spacedProfile}`], {
-                stdio: "ignore",
-                detached: true,
-                env: { ...process.env, JOINED_READY: ready },
-              });
+              const joinedTitle = `python3 /fixture/join-cmdline.py --user-data-dir=${spacedProfile} `;
+              const joined = spawn(
+                "bash",
+                [
+                  "-c",
+                  'exec -a "$1" "$2" -e "setInterval(() => {}, 1000)"',
+                  "bash",
+                  joinedTitle,
+                  process.execPath,
+                ],
+                {
+                  stdio: "ignore",
+                  detached: true,
+                },
+              );
               try {
                 const deadline = Date.now() + 2_000;
-                while (spawnSync("test", ["-s", ready]).status !== 0) {
+                while (true) {
+                  const cmdline = spawnSync("cat", [`/proc/${joined.pid}/cmdline`]).stdout;
+                  if (cmdline.includes(joinedTitle)) {
+                    writeFileSync(ready, "ready\n");
+                    break;
+                  }
                   if (Date.now() > deadline)
                     throw new Error("space-joined command line was not published");
                   spawnSync("sleep", ["0.02"]);

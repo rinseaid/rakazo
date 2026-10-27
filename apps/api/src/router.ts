@@ -63,6 +63,20 @@ export interface RouterDeps {
   home: AgentHomeStore;
   secrets: SecretStore;
   oauthLogins: PiOAuthLogins;
+  nativeModelCatalog?: (input: {
+    actor: { userId: string; spaceId: string };
+    provider: string;
+    credentialId?: string;
+    signal: AbortSignal;
+    action?: "discover" | "list" | "validate" | "contains" | "invalidate";
+    generation?: string;
+    modelId?: string;
+    profileRevision?: string;
+  }) => Promise<{
+    models: string[];
+    generation: string;
+    thinkingLevelsByModel?: Record<string, string[]>;
+  }>;
   /** Live Codex catalog seam; defaults to the shared per-process cache. */
   codexCatalog?: CodexLiveCatalog;
   providerCatalog?: ProviderCatalogCache;

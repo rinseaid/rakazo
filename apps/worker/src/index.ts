@@ -11,6 +11,8 @@ loadRootEnv();
 import {
   ChatSdkMessagingSurface,
   CodexCatalogCache,
+  createAccountModelProvider,
+  createAccountOperationHostSweeper,
   createAgentHomeStore,
   createArtifactStore,
   createBackgroundJobHandlers,
@@ -128,10 +130,6 @@ async function main() {
   const ticketBoardEnabled = process.env.TICKET_BOARD_ENABLED === "true";
   const boardEvents = createBoardEvents(realtime);
   const dataDir = process.env.DATA_DIR ?? "./data";
-  const runtime =
-    process.env.AGENT_RUNTIME === "scripted"
-      ? new ScriptedAgentRuntime()
-      : new PiAgentRuntime({ sessionRoot: resolvePiSessionRoot(dataDir) });
   // Same resolver the API uses, so both processes agree on provider, model and key.
   const { key: deploymentModelKey, configured: deploymentModelConfigured } =
     resolveDeploymentModel();
@@ -143,6 +141,13 @@ async function main() {
     dataDir,
     prisma,
   });
+  const runtime =
+    process.env.AGENT_RUNTIME === "scripted"
+      ? new ScriptedAgentRuntime()
+      : new PiAgentRuntime({
+          sessionRoot: resolvePiSessionRoot(dataDir),
+          createProvider: createAccountModelProvider({ prisma, sandbox }),
+        });
   const allowPrivateEndpoint = process.env.MCP_ALLOW_PRIVATE_ENDPOINT === "true";
   const mcpOAuth = new McpOAuthBroker(prisma, secrets, {}, allowPrivateEndpoint);
   const mcpStdio = {
@@ -310,6 +315,8 @@ async function main() {
     cloudAgent,
     notifications,
   });
+  const sweepAccountHosts = createAccountOperationHostSweeper({ prisma, sandbox });
+  const sweepIdleComputers = createIdleComputerSweeper({ prisma, jobs });
   const reconciler = createJobReconciler({
     prisma,
     jobs,
@@ -332,7 +339,10 @@ async function main() {
       securityEventRetentionDays(),
     ),
     reconcileHomeStorage: homeStorageSweeper(home),
-    reconcileIdleComputers: createIdleComputerSweeper({ prisma, jobs }),
+    reconcileIdleComputers: async () => {
+      await sweepAccountHosts();
+      await sweepIdleComputers();
+    },
     reconcileDeadJobs: inMemoryJobs ? undefined : createDeadJobPruner(pool),
   });
   let stopHealth: (() => Promise<void>) | undefined;

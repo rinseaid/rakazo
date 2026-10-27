@@ -10,10 +10,14 @@ import {
   decisionModelCatalog,
   deploymentModelRole,
   findConnectedModelCredential,
+  GOOGLE_ANTIGRAVITY_PROVIDER_ID,
+  googleAntigravityModelAcceptsImages,
+  isNativeModelProvider,
   kickModelCredentialRefresh,
   listAvailablePiCatalog,
   McpOAuthBroker,
   modelCredentialAuthKindsForSpace,
+  nativeModelProviderEnabled,
   providerCatalogCache,
   providerLiveCatalogsForSpace,
   savedCatalogSelections,
@@ -107,10 +111,29 @@ export function createRouterContext(deps: RouterDeps) {
     deps.refreshExpiredModelCredential ??
     ((scope: { userId: string; spaceId: string }, secretId: string, provider: string) =>
       kickModelCredentialRefresh(deps.prisma, deps.secrets, scope, secretId, provider));
+  const nativeModelListed = async (input: {
+    actor: Pick<Actor, "userId" | "spaceId">;
+    provider: string;
+    credentialId: string;
+    modelId: string;
+  }) => {
+    if (!nativeModelProviderEnabled(input.provider) || !deps.nativeModelCatalog) return false;
+    try {
+      const result = await deps.nativeModelCatalog({
+        ...input,
+        action: "contains",
+        signal: AbortSignal.timeout(1_000),
+      });
+      return result.models.includes(input.modelId);
+    } catch {
+      return false;
+    }
+  };
   const botModelValidation = (actor: Actor) => ({
     prisma: deps.prisma,
     secretStore: deps.secrets,
     codexCatalog,
+    nativeModelListed,
     refreshExpiredCredential,
     hostedProvider: deps.billing?.modelCreditsEnabled ? deps.env.defaultProvider : undefined,
     defaultModel: async () => {
@@ -135,7 +158,87 @@ export function createRouterContext(deps: RouterDeps) {
   // cannot execute it, so it stays out of the user-facing catalog otherwise.
   const chatCatalog = async (actor: Actor) => {
     const catalog = await catalogForSpace(actor);
-    return deps.env.agentRuntime === "scripted" ? [...catalog, scriptedCatalogEntry] : catalog;
+    const native = await discoveredNativeCatalog(actor);
+    const visible = native.length
+      ? catalog.filter(
+          (entry) => entry.provider !== GOOGLE_ANTIGRAVITY_PROVIDER_ID || !entry.placeholder,
+        )
+      : catalog;
+    return [
+      ...visible,
+      ...native,
+      ...(deps.env.agentRuntime === "scripted" ? [scriptedCatalogEntry] : []),
+    ];
+  };
+  const discoveredNativeCatalog = async (actor: Actor): Promise<ModelCatalogEntry[]> => {
+    if (!nativeModelProviderEnabled(GOOGLE_ANTIGRAVITY_PROVIDER_ID) || !deps.nativeModelCatalog)
+      return [];
+    const connections = await deps.prisma.userModelCredential.findMany({
+      where: { userId: actor.userId, provider: GOOGLE_ANTIGRAVITY_PROVIDER_ID },
+      select: { id: true },
+    });
+    const entries = new Map<string, ModelCatalogEntry>();
+    for (const connection of connections) {
+      try {
+        let result: {
+          models: string[];
+          generation: string;
+          thinkingLevelsByModel?: Record<string, string[]>;
+        };
+        try {
+          result = await deps.nativeModelCatalog({
+            actor,
+            provider: GOOGLE_ANTIGRAVITY_PROVIDER_ID,
+            credentialId: connection.id,
+            action: "list",
+            signal: AbortSignal.timeout(1_000),
+          });
+        } catch {
+          // The native catalog is process-local. Rediscover it after expiry or an API restart.
+          result = await deps.nativeModelCatalog({
+            actor,
+            provider: GOOGLE_ANTIGRAVITY_PROVIDER_ID,
+            credentialId: connection.id,
+            action: "discover",
+            signal: AbortSignal.timeout(30_000),
+          });
+        }
+        for (const id of result.models) {
+          const prior = entries.get(id);
+          const nativeGenerationsByCredential = {
+            ...(prior?.nativeGenerationsByCredential ?? {}),
+            [connection.id]: result.generation,
+          };
+          const credentialIds = Object.keys(nativeGenerationsByCredential);
+          entries.set(id, {
+            provider: GOOGLE_ANTIGRAVITY_PROVIDER_ID,
+            providerName: "Google Antigravity",
+            id,
+            label: id,
+            billing: "Uses your Google Antigravity account. Rakazo does not pay.",
+            auth: "oauth",
+            oauthLabel: "Sign in with Google",
+            authHint: "Google Antigravity account",
+            subscription: true,
+            images: googleAntigravityModelAcceptsImages(id),
+            ...(result.thinkingLevelsByModel?.[id]?.length
+              ? {
+                  thinkingLevels: result.thinkingLevelsByModel[
+                    id
+                  ] as ModelCatalogEntry["thinkingLevels"],
+                }
+              : {}),
+            signIn: "auth-url",
+            credentialIds,
+            nativeGenerationsByCredential,
+            ...(credentialIds.length === 1 ? { nativeGeneration: result.generation } : {}),
+          });
+        }
+      } catch {
+        // Empty, failed, stale or process-local cache misses advertise no native model.
+      }
+    }
+    return [...entries.values()];
   };
   const catalogForSpace = async (actor: Actor) => {
     const auth = await modelCredentialAuthKindsForSpace(
@@ -237,6 +340,7 @@ export function createRouterContext(deps: RouterDeps) {
           owners.length < 2 ||
           entry.placeholder ||
           entry.protocol === "decisions" ||
+          (entry.provider === GOOGLE_ANTIGRAVITY_PROVIDER_ID && entry.credentialIds) ||
           ("managed" in entry && entry.managed)
         )
           return entry;
@@ -265,7 +369,7 @@ export function createRouterContext(deps: RouterDeps) {
           entry.provider === canonicalPiProviderId(choice.provider) && entry.id === choice.modelId,
       );
       // A row pinned to a connection runs only there, never on the deployment's.
-      const resolution = { credentialId: choice.credentialId };
+      const resolution = { credentialId: choice.credentialId, nativeModelListed };
       const credential = await findConnectedModelCredential(
         deps.prisma,
         deps.secrets,
@@ -278,15 +382,46 @@ export function createRouterContext(deps: RouterDeps) {
         throw new ORPCError("BAD_REQUEST", { message: "Connect that model provider first" });
       // Another account of the provider listing the model does not make it run on this one;
       // the catalog names the connections that can, as the picker shows.
-      if (
-        credential &&
-        choice.credentialId &&
-        entry?.credentialIds &&
-        !entry.credentialIds.includes(choice.credentialId)
-      )
+      if (credential && entry?.credentialIds && !entry.credentialIds.includes(credential.id))
         throw new ORPCError("BAD_REQUEST", {
           message: "That model is not available for this connection",
         });
+      if (isNativeModelProvider(choice.provider)) {
+        if (
+          !nativeModelProviderEnabled(choice.provider) ||
+          !credential ||
+          !entry ||
+          entry.placeholder
+        )
+          throw new ORPCError("BAD_REQUEST", {
+            message: "That native model is unavailable; discover this account's models again",
+          });
+        const generation =
+          entry.nativeGenerationsByCredential?.[credential.id] ?? entry.nativeGeneration;
+        if (
+          !choice.nativeGeneration ||
+          choice.nativeGeneration !== generation ||
+          !deps.nativeModelCatalog
+        )
+          throw new ORPCError("BAD_REQUEST", {
+            message: "Native model discovery is stale; list this account's models again",
+          });
+        try {
+          await deps.nativeModelCatalog({
+            actor,
+            provider: choice.provider,
+            credentialId: credential.id,
+            action: "validate",
+            generation: choice.nativeGeneration,
+            modelId: choice.modelId,
+            signal: AbortSignal.timeout(5_000),
+          });
+        } catch {
+          throw new ORPCError("BAD_REQUEST", {
+            message: "Native model discovery is stale; list this account's models again",
+          });
+        }
+      }
       if (choice.thinkingLevel) {
         const { allowed } = await prepareAllowedThinkingLevels(
           deps,
@@ -308,7 +443,7 @@ export function createRouterContext(deps: RouterDeps) {
         actor,
         choice.provider,
         choice.modelId,
-        resolution,
+        { ...resolution, nativeModelListed },
       );
       if (error || choice.provider !== OPENAI_COMPATIBLE_PROVIDER_ID)
         throw new ORPCError("BAD_REQUEST", {

@@ -5,22 +5,50 @@ describe("loopback OAuth callbacks", () => {
   it("reads the code and state Anthropic redirects with", () => {
     expect(
       oauthCallbackFrom("http://localhost:53692/callback?code=ac_123&state=verifier_456"),
-    ).toEqual({ code: "ac_123", state: "verifier_456" });
+    ).toEqual({
+      code: "ac_123",
+      state: "verifier_456",
+      callbackUrl: "http://localhost:53692/callback?code=ac_123&state=verifier_456",
+    });
   });
 
   it("accepts the loopback addresses a provider may redirect to", () => {
     expect(oauthCallbackFrom("http://127.0.0.1:53692/callback?code=ac_123")).toEqual({
       code: "ac_123",
+      callbackUrl: "http://127.0.0.1:53692/callback?code=ac_123",
     });
     expect(oauthCallbackFrom("http://[::1]:53692/callback?code=ac_123")).toEqual({
       code: "ac_123",
+      callbackUrl: "http://[::1]:53692/callback?code=ac_123",
     });
   });
 
   it("omits state when the provider redirects without one", () => {
     expect(oauthCallbackFrom("http://localhost:53692/callback?code=ac_123")).toEqual({
       code: "ac_123",
+      callbackUrl: "http://localhost:53692/callback?code=ac_123",
     });
+  });
+
+  it("preserves the complete loopback URL including additional provider parameters", () => {
+    const callbackUrl =
+      "http://localhost:53692/callback?code=ac_123&state=verifier_456&scope=openid+email";
+    expect(oauthCallbackFrom(callbackUrl)).toEqual({
+      code: "ac_123",
+      state: "verifier_456",
+      callbackUrl,
+    });
+  });
+
+  it("rejects ambiguous or credential-bearing callback URLs", () => {
+    for (const callbackUrl of [
+      "http://user@localhost:53692/callback?code=ac_123",
+      "http://localhost:53692/callback?code=first&code=second",
+      "http://localhost:53692/callback?code=ac_123&state=one&state=two",
+      "http://localhost:53692/callback?code=ac_123&error=access_denied",
+    ]) {
+      expect(oauthCallbackFrom(callbackUrl)).toBeUndefined();
+    }
   });
 
   it("ignores the authorize page and other steps of the flow", () => {
@@ -54,7 +82,10 @@ describe("loopback OAuth callbacks", () => {
       oauthCallbackFrom("http://localhost:53692/callback?code=ac_123", {
         excludeOrigins: ["http://127.0.0.1:5173"],
       }),
-    ).toEqual({ code: "ac_123" });
+    ).toEqual({
+      code: "ac_123",
+      callbackUrl: "http://localhost:53692/callback?code=ac_123",
+    });
   });
 });
 
@@ -70,5 +101,8 @@ it("lets SSO reach its API callback instead of capturing a separate loopback ori
     oauthCallbackFrom("http://localhost:53692/callback?code=model-code", {
       frameName: "rakazo-model-oauth",
     }),
-  ).toEqual({ code: "model-code" });
+  ).toEqual({
+    code: "model-code",
+    callbackUrl: "http://localhost:53692/callback?code=model-code",
+  });
 });

@@ -44,6 +44,7 @@ describe("system browser authentication", () => {
     expect(options.onCallback).toHaveBeenCalledExactlyOnceWith({
       code: "example-code",
       state: "test-state",
+      callbackUrl: `${callback}?code=example-code&state=test-state`,
     });
     await expect(fetch(`${callback}?code=replay&state=test-state`)).rejects.toThrow();
     expect(options.onClose).toHaveBeenCalledOnce();
@@ -74,7 +75,11 @@ describe("system browser authentication", () => {
     authorization.searchParams.set("redirect_uri", localCallback);
     await openBrowserAuth(authorization.href, options);
     expect((await fetch(`${localCallback}?code=x&state=test-state`)).status).toBe(200);
-    expect(options.onCallback).toHaveBeenCalledOnce();
+    expect(options.onCallback).toHaveBeenCalledExactlyOnceWith({
+      code: "x",
+      state: "test-state",
+      callbackUrl: `${localCallback}?code=x&state=test-state`,
+    });
   });
 
   it.each(["127.0.0.1", "::1"])(

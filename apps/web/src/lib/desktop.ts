@@ -42,11 +42,18 @@ export function oauthStateOf(verificationUri: string): string | undefined {
 export function onDesktopOAuthCallback(
   listener: (code: string) => void,
   expectedState?: string,
+  callbackInput: "code" | "url" = "code",
 ): () => void {
   const oauth = desktopBridge()?.oauth;
   if (!oauth) return () => undefined;
   return oauth.onCallback((callback) => {
     if (expectedState !== undefined && callback.state !== expectedState) return;
+    if (callbackInput === "url") {
+      // Older desktop shells cannot provide the complete redirect. Keep the
+      // secure paste fallback available instead of submitting a parsed code.
+      if (callback.callbackUrl) listener(callback.callbackUrl);
+      return;
+    }
     listener(desktopOAuthCode(callback));
   });
 }

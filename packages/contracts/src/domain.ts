@@ -1232,7 +1232,7 @@ export const ModelCredentialSchema = z.object({
   /** Openai-compatible only; always contains `modelId` when set. */
   enabledModelIds: z.array(z.string()).optional(),
   /** Stored secret kind. Absent when the secret could not be read. */
-  authKind: z.enum(["api_key", "oauth", "openai_compatible"]).optional(),
+  authKind: z.enum(["api_key", "oauth", "openai_compatible", "native"]).optional(),
 });
 export type ModelCredential = z.infer<typeof ModelCredentialSchema>;
 
@@ -1240,6 +1240,8 @@ export const MAX_MODEL_BACKUPS = 10;
 export const ModelBackupChoiceSchema = z.object({
   provider: z.string().trim().min(1).max(128),
   modelId: z.string().trim().min(1).max(512),
+  credentialId: Id.optional(),
+  nativeGeneration: z.string().min(16).max(128).optional(),
 });
 export type ModelBackupChoice = z.infer<typeof ModelBackupChoiceSchema>;
 /** At most MAX_MODEL_BACKUPS choices, each model once. */
@@ -1294,6 +1296,8 @@ export const ModelConnectInputSchema = z
      */
     credentialId: ModelConnectionTargetSchema,
     modelId: z.string().optional(),
+    /** Server-issued token for a discovered native account model. */
+    nativeGeneration: z.string().min(16).max(128).optional(),
     reasoning: z.boolean().optional(),
     thinkingLevel: ThinkingLevelSchema.nullable().optional(),
     /** False keeps the current main model; omitted means true. */
@@ -1353,6 +1357,32 @@ export const ModelConnectInputSchema = z
       }
       return;
     }
+    if (value.provider === "google-antigravity") {
+      if (value.apiKey?.trim()) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Native account connections require sign-in, not an API key",
+          path: ["apiKey"],
+        });
+        return;
+      }
+      if (value.modelId?.trim() && (!value.credentialId || !value.nativeGeneration)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Rediscover this account's models before selecting one",
+          path: ["nativeGeneration"],
+        });
+        return;
+      }
+      if (!value.modelId?.trim() && !value.maxTokens && !value.credentialId) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Select an existing account connection",
+          path: ["credentialId"],
+        });
+      }
+      return;
+    }
     const apiKey = value.apiKey?.trim() ?? "";
     if (apiKey.length > 0 && apiKey.length < 8) {
       ctx.addIssue({
@@ -1385,13 +1415,36 @@ const ModelOAuthBeginBaseSchema = z.object({
   expiresInSeconds: z.number().int().positive(),
 });
 
-export const ModelOAuthBeginSchema = z.discriminatedUnion("mode", [
-  ModelOAuthBeginBaseSchema.extend({
-    mode: z.literal("device-code"),
-    userCode: z.string().min(1),
-  }),
-  ModelOAuthBeginBaseSchema.extend({ mode: z.literal("auth-url") }),
-]);
+export const ModelOAuthBeginSchema = z
+  .discriminatedUnion("mode", [
+    ModelOAuthBeginBaseSchema.extend({
+      mode: z.literal("device-code"),
+      userCode: z.string().min(1),
+    }),
+    ModelOAuthBeginBaseSchema.extend({
+      mode: z.literal("auth-url"),
+      /** Omitted by legacy providers, whose protected input remains an authorization code. */
+      callbackInput: z.enum(["code", "url"]).optional(),
+    }),
+  ])
+  .superRefine((value, ctx) => {
+    if (value.mode === "auth-url") {
+      if (value.callbackInput === "url" && value.provider !== "google-antigravity") {
+        ctx.addIssue({
+          code: "custom",
+          message: "Complete callback URLs are only accepted for native Google sign-in",
+          path: ["callbackInput"],
+        });
+      }
+      if (value.provider === "google-antigravity" && value.callbackInput !== "url") {
+        ctx.addIssue({
+          code: "custom",
+          message: "Native Google sign-in requires its complete callback URL",
+          path: ["callbackInput"],
+        });
+      }
+    }
+  });
 export type ModelOAuthBegin = z.infer<typeof ModelOAuthBeginSchema>;
 
 export const SpaceMemoryConfigSchema = z.object({
@@ -1409,6 +1462,10 @@ export const ModelCatalogEntrySchema = z.object({
   recommended: z.boolean().optional(),
   /** The provider's connections that can run it, when not all of them can. */
   credentialIds: z.array(z.string()).optional(),
+  /** Opaque account/profile revision for selecting a discovered native model. */
+  nativeGeneration: z.string().min(16).max(128).optional(),
+  /** Per-credential discovery tokens when multiple native accounts expose this model. */
+  nativeGenerationsByCredential: z.record(z.string(), z.string().min(16).max(128)).optional(),
   /** Available through the deployment without a personal credential. */
   managed: z.boolean().optional(),
   provider: z.string(),

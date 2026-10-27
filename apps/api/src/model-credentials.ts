@@ -5,7 +5,9 @@ import {
   codexLiveListsModel,
   compatibleThinkingLevels,
   defaultCatalogModelId,
+  isNativeModelProvider,
   modelCredentialDto,
+  nativeModelProviderEnabled,
   parseModelSecret,
   prepareAllowedThinkingLevels as prepareModelThinkingLevels,
   providerCatalogCache,
@@ -98,6 +100,9 @@ type ModelCredentialInput = {
   plaintext: string;
   label?: string;
   modelId?: string;
+  nativeGeneration?: string;
+  nativeSourceSecretId?: string;
+  nativeSourceCiphertext?: string;
   thinkingLevel?: string | null;
   /** False keeps the current main model. */
   makeDefault?: boolean;
@@ -107,6 +112,7 @@ type ModelCredentialInput = {
   signal?: AbortSignal;
   /** Becomes the main model only while there is none. */
   keepExistingDefault?: boolean;
+  deferModelSelection?: boolean;
 };
 
 export async function prepareModelCredential(
@@ -117,6 +123,60 @@ export async function prepareModelCredential(
 ) {
   throwIfAborted(input.signal);
   const requestedModelId = usableModelId(input.modelId);
+  const secret = parseModelSecret(input.plaintext);
+  if (secret.kind === "native" && secret.provider !== input.provider)
+    throw new ORPCError("BAD_REQUEST", {
+      message: "Native account profile does not match this provider.",
+    });
+  const isNative = secret.kind === "native";
+  if (isNative && !nativeModelProviderEnabled(input.provider))
+    throw new ORPCError("FORBIDDEN", { message: "Google Antigravity is not enabled" });
+  if (input.deferModelSelection && (!isNative || requestedModelId))
+    throw new ORPCError("BAD_REQUEST", { message: "Invalid deferred model selection" });
+  if (!isNative && (input.deferModelSelection || input.nativeGeneration))
+    throw new ORPCError("BAD_REQUEST", { message: "Native model selection metadata is invalid" });
+  let nativeSource: { secretId: string; ciphertext: string } | undefined;
+  if (requestedModelId && isNative) {
+    if (requestedModelId === "__google-antigravity-model-required__")
+      throw new ORPCError("BAD_REQUEST", { message: "Choose a real discovered model" });
+    if (!input.nativeGeneration || !input.credentialId || !deps.nativeModelCatalog)
+      throw new ORPCError("BAD_REQUEST", { message: "Rediscover this account's models" });
+    try {
+      const current = await deps.prisma.userModelCredential.findFirst({
+        where: {
+          id: input.credentialId,
+          userId: actor.userId,
+          provider: input.provider,
+        },
+        select: { id: true, secretId: true },
+      });
+      if (!current) throw new Error("Native connection disappeared");
+      const row = await deps.prisma.secret.findFirst({
+        where: { id: current.secretId, userId: actor.userId, spaceId: null },
+        select: { id: true, ciphertext: true },
+      });
+      if (!row) throw new Error("Native credential disappeared");
+      if (
+        (input.nativeSourceSecretId && input.nativeSourceSecretId !== row.id) ||
+        (input.nativeSourceCiphertext && input.nativeSourceCiphertext !== row.ciphertext)
+      )
+        throw new Error("Native credential changed");
+      await deps.nativeModelCatalog({
+        actor,
+        provider: input.provider,
+        credentialId: input.credentialId,
+        signal: input.signal ?? new AbortController().signal,
+        action: "validate",
+        generation: input.nativeGeneration,
+        modelId: requestedModelId,
+      });
+      nativeSource = { secretId: row.id, ciphertext: row.ciphertext };
+    } catch {
+      throw new ORPCError("CONFLICT", {
+        message: "Native credentials changed; list this account's models again",
+      });
+    }
+  }
   const authError = requestedModelId
     ? validateModelAuthAvailability(input.provider, requestedModelId, input.plaintext)
     : undefined;
@@ -134,10 +194,13 @@ export async function prepareModelCredential(
   ) {
     throw new ORPCError("BAD_REQUEST", { message: authError });
   }
-  const defaultModel =
-    requestedModelId ??
-    defaultCatalogModelId(input.provider, input.plaintext) ??
-    usableModelId(deps.env.defaultModel);
+  const defaultModel = input.deferModelSelection
+    ? null
+    : (requestedModelId ??
+      defaultCatalogModelId(input.provider, input.plaintext) ??
+      (secret.kind === "native" ? null : usableModelId(deps.env.defaultModel)));
+  if (secret.kind === "native" && !defaultModel && !input.deferModelSelection)
+    throw new ORPCError("BAD_REQUEST", { message: "Choose a model" });
   // A compatible connect may enable its new default, so judge it by the secret being saved.
   const allowedThinking = !defaultModel
     ? undefined
@@ -155,7 +218,7 @@ export async function prepareModelCredential(
     userId: actor.userId,
     signal: input.signal ?? new AbortController().signal,
   });
-  return { stored, defaultModel, allowedThinking };
+  return { stored, defaultModel, allowedThinking, nativeSource };
 }
 
 /** Create-only: null when the provider is already connected. */
@@ -179,7 +242,7 @@ async function writeModelCredential(
   input: ModelCredentialInput,
   prepared: Awaited<ReturnType<typeof prepareModelCredential>>,
 ) {
-  const { stored, defaultModel, allowedThinking } = prepared;
+  const { stored, defaultModel, allowedThinking, nativeSource } = prepared;
   throwIfAborted(input.signal);
   const existing = input.credentialId
     ? await tx.userModelCredential.findFirst({
@@ -193,6 +256,20 @@ async function writeModelCredential(
   // A connection removed while this save was in flight stays removed.
   if (input.credentialId && !existing)
     throw new ORPCError("NOT_FOUND", { message: "Connection not found" });
+  if (nativeSource) {
+    if (!existing || existing.secretId !== nativeSource.secretId)
+      throw new ORPCError("CONFLICT", { message: "Native credentials changed; retry" });
+    const current = await tx.secret.findFirst({
+      where: {
+        id: nativeSource.secretId,
+        userId: actor.userId,
+        spaceId: null,
+      },
+      select: { ciphertext: true },
+    });
+    if (current?.ciphertext !== nativeSource.ciphertext)
+      throw new ORPCError("CONFLICT", { message: "Native credentials changed; retry" });
+  }
   throwIfAborted(input.signal);
   const secret = await tx.secret.create({
     data: {
@@ -261,7 +338,7 @@ async function writeModelCredential(
       ).primary?.thinkingLevel ?? null)
     : (thinkingLevel ?? null);
   // The connection's own model; a save for another purpose keeps the one running chat.
-  if (becomesMain || !runsMain)
+  if (!input.deferModelSelection && (becomesMain || !runsMain))
     await saveModelPreference(tx, actor, credential.id, defaultModel, ownThinking);
   throwIfAborted(input.signal);
   if (existing) {
@@ -289,6 +366,15 @@ export async function persistModelCredential(
     }),
   );
   (deps.providerCatalog ?? providerCatalogCache).invalidate(canonicalPiProviderId(input.provider));
+  if (isNativeModelProvider(input.provider) && deps.nativeModelCatalog) {
+    await deps.nativeModelCatalog({
+      actor,
+      provider: input.provider,
+      credentialId: cred.id,
+      signal: input.signal ?? new AbortController().signal,
+      action: "invalidate",
+    });
+  }
   return modelCredentialDto(cred, input.plaintext);
 }
 
@@ -304,6 +390,8 @@ export function createModelConnector(deps: RouterDeps, codexCatalog: CodexLiveCa
   ) => {
     const credential = await modelConnectionTarget(deps, actor, input.provider, input.credentialId);
     let plaintext: string;
+    let nativeSourceSecretId: string | undefined;
+    let nativeSourceCiphertext: string | undefined;
     try {
       let previousPlaintext: string | undefined;
       let omitVisionModelIds = false;
@@ -313,6 +401,8 @@ export function createModelConnector(deps: RouterDeps, codexCatalog: CodexLiveCa
           select: { ciphertext: true },
         });
         if (secret) {
+          nativeSourceSecretId = credential.secretId;
+          nativeSourceCiphertext = secret.ciphertext;
           try {
             previousPlaintext = await deps.secrets.load(secret.ciphertext, credential.secretId);
           } catch (error) {
@@ -360,14 +450,15 @@ export function createModelConnector(deps: RouterDeps, codexCatalog: CodexLiveCa
       if (credential)
         await assertNoDanglingModelPins(deps, actor, credential, saved, input.modelId ?? "");
     }
-    return { plaintext, credential };
+    return { plaintext, credential, nativeSourceSecretId, nativeSourceCiphertext };
   };
   const connectModelCredential = async (
     actor: Actor,
     input: ModelConnectInput,
     signal: AbortSignal | undefined,
   ) => {
-    const { plaintext, credential } = await verifyModelConnection(actor, input, signal);
+    const { plaintext, credential, nativeSourceSecretId, nativeSourceCiphertext } =
+      await verifyModelConnection(actor, input, signal);
     return persistModelCredential(
       deps,
       actor,
@@ -377,6 +468,9 @@ export function createModelConnector(deps: RouterDeps, codexCatalog: CodexLiveCa
         plaintext,
         label: input.label,
         modelId: input.modelId,
+        nativeGeneration: input.nativeGeneration,
+        nativeSourceSecretId,
+        nativeSourceCiphertext,
         // openai-compatible keeps its effort inside the stored endpoint
         // secret; catalog providers store it on the space preference.
         thinkingLevel:

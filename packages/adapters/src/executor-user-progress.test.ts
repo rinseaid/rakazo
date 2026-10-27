@@ -1,9 +1,12 @@
+import type { Model } from "@earendil-works/pi-ai";
 import type { AgentRunRequest, AgentRuntimeEvent } from "@rakazo/adapter-kit";
 import type { MessageBlock } from "@rakazo/contracts";
+import { blocksToAgentHistoryText } from "@rakazo/core";
 import type { AppendEventInput, Prisma } from "@rakazo/db";
 import {
   appendEventInTransaction,
   createThreadMessageInTransaction,
+  nativeContextCursor,
   partialReplyClientNonce,
   RunHistoryWriteError,
 } from "@rakazo/db";
@@ -12,7 +15,12 @@ import { PARTIAL_REPLY_NOTE } from "./automated-messages.js";
 import { loadBotMessageContext, returnBotMessageOutcome } from "./bot-messages.js";
 import type * as ComputerLifecycleModule from "./computer-lifecycle.js";
 import { createRunExecutor } from "./executor.js";
+import { googleAcpCanonicalAssistantText } from "./google-acp-provider.js";
 import { createJobReconciler } from "./job-reconciler.js";
+import type { NativeConversationRunCandidate } from "./native-conversation-candidate.js";
+import { emitNativeConversationCandidate } from "./native-conversation-candidate.js";
+import { createHostedAcpProvider } from "./pi-acp-provider.js";
+import { PiAgentRuntime } from "./pi-runtime.js";
 import { userProgressClientNonce } from "./user-progress.js";
 
 vi.mock("./computer-lifecycle.js", async (importOriginal) => ({
@@ -51,6 +59,9 @@ async function runTurn(
     failHelperId?: string;
     failMessageOnce?: boolean;
     history?: Array<{ id: string; seq: number; role: string; text: string; clientNonce?: string }>;
+    nativeCandidate?: boolean;
+    sourceMessageId?: string;
+    runtime?: Parameters<typeof createRunExecutor>[0]["runtime"];
   } = {},
 ) {
   vi.mocked(loadBotMessageContext).mockResolvedValue({
@@ -71,10 +82,38 @@ async function runTurn(
     userId: "user-1",
     status: "queued",
     trigger: options.trigger ?? (silent ? "bot_message" : "user"),
-    sourceMessageId: "source-1",
+    sourceMessageId: options.sourceMessageId ?? "source-1",
     leaseFence: 0,
   };
+  let boundCursor: ReturnType<typeof nativeContextCursor> | undefined;
+  let candidateDiscards = 0;
+  const runtimeRequests: AgentRunRequest[] = [];
   const runtimeRun = vi.fn(async function* (_request: AgentRunRequest) {
+    runtimeRequests.push(_request);
+    if (options.nativeCandidate) {
+      let bound = false;
+      let discarded = false;
+      const candidate = {
+        provider: _request.model.provider,
+        modelId: _request.model.id,
+        sourceMessageId: _request.sourceMessageId!,
+        canonicalPrefix: ["qualified prior native prefix"],
+        pending: {
+          bindCursor(cursor: ReturnType<typeof nativeContextCursor>) {
+            bound = true;
+            boundCursor = cursor;
+            return Object.freeze({}) as never;
+          },
+          discard() {
+            if (!bound && !discarded) {
+              discarded = true;
+              candidateDiscards += 1;
+            }
+          },
+        },
+      } as unknown as NativeConversationRunCandidate;
+      emitNativeConversationCandidate(_request, candidate);
+    }
     if (options.runtimeEvents) {
       for (const event of options.runtimeEvents) {
         yield event;
@@ -217,6 +256,8 @@ async function runTurn(
     },
     secret: { findFirst: vi.fn(async () => null) },
     userModelCredential: { findFirst: vi.fn(async () => null) },
+    usageRecord: { createMany: vi.fn(async () => ({ count: 1 })) },
+    modelCreditEntry: { findUnique: vi.fn(async () => null) },
     spaceSettingOverride: { findUnique: vi.fn(async () => null) },
     userModelRoleChoice: { findMany: vi.fn(async () => []) },
     deploymentSettings: {
@@ -248,9 +289,15 @@ async function runTurn(
       }
     }),
   };
-  const finalizeRun = vi.fn(async (_input: { blocks: MessageBlock[] }) => ({
-    continuationRunId: null,
-  }));
+  const finalizeRun = vi.fn(
+    async (_input: {
+      blocks: MessageBlock[];
+      outcome?: string;
+      nativeConversationCandidate?: unknown;
+    }) => ({
+      continuationRunId: null,
+    }),
+  );
   const append = vi.fn(async (event: AppendEventInput) =>
     appendEventInTransaction(prisma as unknown as Prisma.TransactionClient, event),
   );
@@ -258,7 +305,7 @@ async function runTurn(
   const executor = createRunExecutor({
     deploymentModelKey: "fixture-model-key",
     prisma,
-    runtime: {
+    runtime: options.runtime ?? {
       describe: () => ({ capabilities: { scripted: false } }),
       run: runtimeRun,
     },
@@ -272,17 +319,178 @@ async function runTurn(
     home: { commit: vi.fn(async () => "fixture-revision") },
     memory: { read: async () => ({ documents: [] }) },
     memoryProviders: { resolve: async () => null },
-    events: { append, finalizeRun, pauseRunForInput, notify: vi.fn(async () => undefined) },
+    events: {
+      append,
+      claimSteering: vi.fn(async () => []),
+      finalizeRun,
+      pauseRunForInput,
+      notify: vi.fn(async () => undefined),
+    },
     jobs: { enqueue: vi.fn(async () => undefined) },
     secrets,
   } as unknown as Parameters<typeof createRunExecutor>[0]);
 
   await executor.continueRun(run.id, "worker-1");
-  expect(runtimeRun).toHaveBeenCalled();
+  if (!options.runtime) expect(runtimeRun).toHaveBeenCalled();
   if (!options.runtimeFailure)
     expect(finalizeRun).not.toHaveBeenCalledWith(expect.objectContaining({ outcome: "failed" }));
-  return { finalizeRun, append, pauseRunForInput, messages, savedEvents, prisma, runtimeRun };
+  return {
+    finalizeRun,
+    append,
+    pauseRunForInput,
+    messages,
+    savedEvents,
+    prisma,
+    runtimeRun,
+    runtimeRequests,
+    boundCursor: () => boundCursor,
+    candidateDiscards: () => candidateDiscards,
+  };
 }
+
+describe("executor native conversation candidate commit", () => {
+  const currentSource = [{ id: "source-1", seq: 2, role: "user", text: "Look again" }];
+
+  it("does not promote a candidate when Pi synthesizes a response for an empty native turn", async () => {
+    let bound = false;
+    let discarded = false;
+    const runtime = new PiAgentRuntime({
+      createProvider: (config, scope) => {
+        const model: Model<"acp"> = {
+          id: config.id,
+          name: "Empty native fixture",
+          provider: config.provider,
+          api: "acp",
+          baseUrl: "",
+          reasoning: false,
+          input: ["text"],
+          contextWindow: 32_768,
+          maxTokens: 4096,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        };
+        const hosted = createHostedAcpProvider({
+          id: config.provider,
+          name: "Empty native fixture",
+          models: [model],
+          auth: {
+            apiKey: {
+              name: "Fixture",
+              resolve: async () => ({ auth: {}, source: "fixture" }),
+            },
+          },
+          open: async () => ({ prompt: async () => {}, close: async () => {} }),
+        });
+        return {
+          provider: hosted.provider,
+          close: async () => {
+            await hosted.close();
+            emitNativeConversationCandidate(scope.request, {
+              provider: config.provider,
+              modelId: config.id,
+              sourceMessageId: scope.request.sourceMessageId!,
+              canonicalPrefix: [],
+              pending: {
+                bindCursor() {
+                  bound = true;
+                  return Object.freeze({}) as never;
+                },
+                discard() {
+                  discarded = true;
+                },
+              },
+            } as unknown as NativeConversationRunCandidate);
+          },
+        };
+      },
+    });
+    const f = await runTurn("", false, undefined, [], "fyi", {
+      trigger: "user",
+      history: currentSource,
+      runtime,
+    });
+
+    expect(f.finalizeRun.mock.calls[0]?.[0].blocks).toContainEqual({
+      kind: "text",
+      text: "No response. Try again.",
+    });
+    expect(f.finalizeRun.mock.calls[0]?.[0].nativeConversationCandidate).toBeUndefined();
+    expect(bound).toBe(false);
+    expect(discarded).toBe(true);
+  });
+
+  it("binds the candidate cursor to the exact final persisted assistant message", async () => {
+    const f = await runTurn("", false, undefined, [], "fyi", {
+      trigger: "user",
+      history: currentSource,
+      nativeCandidate: true,
+      runtimeEvents: [
+        { type: "text", text: "The draft is ready." },
+        { type: "turn" },
+        { type: "text", text: "Final answer." },
+        { type: "done", text: "The draft is ready.Final answer." },
+      ],
+    });
+    const finalized = f.finalizeRun.mock.calls[0]![0];
+    const persisted = blocksToAgentHistoryText(finalized.blocks);
+    expect(persisted).toBe("The draft is ready.\n\nFinal answer.");
+    expect(finalized.nativeConversationCandidate).toBeDefined();
+    expect(f.boundCursor()).toEqual(
+      nativeContextCursor([
+        "qualified prior native prefix",
+        googleAcpCanonicalAssistantText(persisted),
+      ]),
+    );
+    expect(f.candidateDiscards()).toBe(0);
+
+    const followup = await runTurn("Follow-up answer.", false, undefined, [], "fyi", {
+      trigger: "user",
+      sourceMessageId: "source-2",
+      history: [
+        { id: "source-1", seq: 1, role: "user", text: "Look again" },
+        { id: "assistant-1", seq: 2, role: "bot", text: persisted },
+        { id: "source-2", seq: 3, role: "user", text: "Continue from that answer" },
+      ],
+      runtimeEvents: [{ type: "done", text: "Follow-up answer." }],
+    });
+    expect(followup.runtimeRequests[0]?.history).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "source-1", role: "user", content: "Look again" }),
+        expect.objectContaining({ id: "assistant-1", role: "assistant", content: persisted }),
+      ]),
+    );
+  });
+
+  it("discards candidates for separately published narration and silent or failed turns", async () => {
+    const published = await runTurn("Final answer.", false, undefined, [], "fyi", {
+      trigger: "user",
+      history: currentSource,
+      priorProgressText: "A separate durable narration",
+      nativeCandidate: true,
+    });
+    expect(published.finalizeRun.mock.calls[0]![0].nativeConversationCandidate).toBeUndefined();
+    expect(published.candidateDiscards()).toBe(1);
+
+    const silent = await runTurn("", false, undefined, [], "fyi", {
+      trigger: "user",
+      history: currentSource,
+      nativeCandidate: true,
+      runtimeEvents: [{ type: "done", text: "" }],
+    });
+    expect(silent.finalizeRun.mock.calls[0]![0].nativeConversationCandidate).toBeUndefined();
+    expect(silent.candidateDiscards()).toBe(1);
+
+    const failed = await runTurn("", false, undefined, [], "fyi", {
+      trigger: "user",
+      history: currentSource,
+      nativeCandidate: true,
+      runtimeFailure: true,
+      runtimeEvents: [{ type: "text", text: "Interrupted response." }],
+    });
+    expect(failed.finalizeRun.mock.calls[0]![0].outcome).toBe("failed");
+    expect(failed.finalizeRun.mock.calls[0]![0].nativeConversationCandidate).toBeUndefined();
+    expect(failed.candidateDiscards()).toBe(1);
+  });
+});
 
 describe.each(["routine", "reaction", "bot_message", "messaging"])(
   "held-back narration on %s runs",

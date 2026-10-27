@@ -1,3 +1,8 @@
+import {
+  GOOGLE_ANTIGRAVITY_PLACEHOLDER_MODEL_ID,
+  isNativeModelProvider,
+  nativeModelProviderEnabled,
+} from "./model-native-auth.js";
 import type { PiCatalogAuth, PiCatalogEntry } from "./pi-models.js";
 import { listPiCatalog } from "./pi-models.js";
 import type { StoredModelSecret } from "./pi-oauth.js";
@@ -11,9 +16,10 @@ export const OPENAI_CODEX_CHATGPT_SUBSCRIPTION_EXCLUDED_MODEL_IDS = new Set([
 export const UNAVAILABLE_MODEL_FOR_AUTH_MESSAGE =
   "This model is not available with your current sign-in. Choose another model in Settings.";
 
-export type ModelCredentialAuthKind = "oauth" | "api_key" | "openai_compatible";
+export type ModelCredentialAuthKind = "oauth" | "api_key" | "openai_compatible" | "native";
 
 export function modelCredentialAuthKind(secret: StoredModelSecret): ModelCredentialAuthKind {
+  if (secret.kind === "native") return "native";
   if (secret.kind === "oauth") return "oauth";
   if (secret.kind === "openai_compatible") return "openai_compatible";
   return "api_key";
@@ -34,6 +40,12 @@ export function catalogModelAvailableForAuth(
   authKind: ModelCredentialAuthKind | "disconnected",
   providerAuth?: PiCatalogAuth,
 ): boolean {
+  if (isNativeModelProvider(provider))
+    return (
+      nativeModelProviderEnabled(provider) &&
+      modelId !== GOOGLE_ANTIGRAVITY_PLACEHOLDER_MODEL_ID &&
+      (authKind === "native" || authKind === "disconnected")
+    );
   if (provider !== CHATGPT_OAUTH_PROVIDER) return true;
   const usesChatGptSubscription =
     authKind === "oauth" ||
@@ -50,11 +62,15 @@ export function listAvailablePiCatalog(
   > = {},
 ): PiCatalogEntry[] {
   return listPiCatalog().filter((entry) =>
-    catalogModelAvailableForAuth(
-      entry.provider,
-      entry.id,
-      authByModel[entry.provider]?.[entry.id] ?? authByProvider[entry.provider] ?? "disconnected",
-      entry.auth,
-    ),
+    entry.placeholder && isNativeModelProvider(entry.provider)
+      ? nativeModelProviderEnabled(entry.provider)
+      : catalogModelAvailableForAuth(
+          entry.provider,
+          entry.id,
+          authByModel[entry.provider]?.[entry.id] ??
+            authByProvider[entry.provider] ??
+            "disconnected",
+          entry.auth,
+        ),
   );
 }

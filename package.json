@@ -35,7 +35,8 @@
     "perf:desktop": "tsx packages/testkit/src/cli/desktop-performance.ts",
     "perf:compare": "tsx packages/testkit/src/cli/compare-performance.ts",
     "compose:up": "docker compose --env-file .env -f infra/compose/docker-compose.yml up --build",
-    "compose:down": "docker compose --env-file .env -f infra/compose/docker-compose.yml down -v"
+    "compose:down": "docker compose --env-file .env -f infra/compose/docker-compose.yml down -v",
+    "test:acp": "vitest run --maxWorkers=2 packages/adapters/src/acp- packages/adapters/src/pi-acp- packages/adapters/src/google-acp- packages/adapters/src/model-native- packages/adapters/src/executor-native-auth.test.ts packages/adapters/src/pi-native-login.test.ts packages/adapters/src/pi-runtime-attachments.test.ts packages/adapters/src/native-acp-hooks-fixture.test.ts packages/adapters/src/native-acp-graceful-fixture.test.ts packages/adapters/src/native-acp-result-fixture.test.ts packages/adapters/src/duplex-process.test.ts packages/adapters/src/executor-lazy-computer.test.ts infra/sandboxes/supervisor/src/process-channel.test.ts infra/sandboxes/supervisor/src/process-wrapper.test.ts packages/testkit/src/duplex-process.test.ts packages/adapters/src/account-operation-host.test.ts packages/adapters/src/docker-account-operations.test.ts packages/adapters/src/native-account-relay packages/adapters/src/hosted-native-account.test.ts packages/db/src/account-operation-hosts.test.ts packages/db/src/native-conversation-state.test.ts infra/sandboxes/supervisor/src/account-hosts.test.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",

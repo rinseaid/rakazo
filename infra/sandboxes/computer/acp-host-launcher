@@ -1,0 +1,4 @@
+#!/bin/sh
+# Private account helper: native-created conversation files must remain owner-only.
+umask 077
+exec /usr/local/bin/node /usr/local/lib/rakazo-acp-host.mjs "$@"

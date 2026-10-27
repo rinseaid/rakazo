@@ -184,7 +184,7 @@ export async function loadStoredModelAuth(
 }
 
 type ModelConnectionPreflightInput = {
-  authKind: "api-key" | "oauth";
+  authKind: "api-key" | "oauth" | "native";
   provider: string;
   apiKey?: string;
   modelId?: string;
@@ -203,7 +203,7 @@ export async function runModelConnectionPreflight(
 ): Promise<
   { ok: true; discoveredModels: string[] } | { ok: false; failure: ModelPreflightFailure }
 > {
-  if (input.authKind === "oauth") {
+  if (input.authKind === "oauth" || input.authKind === "native") {
     if (input.credentialLookupFailed || input.credentialUnreadable) {
       return {
         ok: false,
@@ -214,7 +214,7 @@ export async function runModelConnectionPreflight(
         },
       };
     }
-    if (input.storedAuthKind === "oauth") {
+    if (input.storedAuthKind === input.authKind) {
       return { ok: true, discoveredModels: [] };
     }
     if (input.storedAuthKind === "api_key" || input.storedAuthKind === "openai_compatible") {
@@ -224,6 +224,16 @@ export async function runModelConnectionPreflight(
           outcome: "needs_sign_in",
           message: t`An API key is stored for this provider, not a subscription sign-in.`,
           nextAction: t`Sign in with the subscription, or test the API key instead.`,
+        },
+      };
+    }
+    if (input.storedAuthKind !== null && input.storedAuthKind !== undefined) {
+      return {
+        ok: false,
+        failure: {
+          outcome: "needs_sign_in",
+          message: t`A different subscription credential type is stored for this provider.`,
+          nextAction: t`Sign in with the matching subscription, or choose another provider.`,
         },
       };
     }

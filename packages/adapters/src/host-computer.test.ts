@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import {
   mkdir,
   mkdtemp,
@@ -493,6 +494,13 @@ async function collect<T>(items: AsyncIterable<T>): Promise<T[]> {
 function processExists(pid: number) {
   if (!pid) return false;
   try {
+    if (process.platform === "linux") {
+      // kill(pid, 0) succeeds for an exited zombie until its parent reaps it.
+      // /proc stat's state field distinguishes that already-terminated process.
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      const state = stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3);
+      if (state === "Z") return false;
+    }
     process.kill(pid, 0);
     return true;
   } catch {

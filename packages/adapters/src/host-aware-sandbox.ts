@@ -52,12 +52,15 @@ export function createRunSandbox(
 
 export class HostAwareSandbox implements SandboxProvider {
   readonly pageBrowser?: SandboxProvider["pageBrowser"];
+  readonly accountOperations?: SandboxProvider["accountOperations"];
 
   constructor(
     private readonly isolated: SandboxProvider,
     private readonly host: SandboxProvider,
     private readonly hostEnabled: () => Promise<boolean>,
   ) {
+    // Account operations always use isolated hosting, irrespective of desktop selection.
+    this.accountOperations = isolated.accountOperations;
     if (isolated.pageBrowser || host.pageBrowser) {
       this.pageBrowser = (computer, request, context) => {
         const provider = this.route(computer);
@@ -129,6 +132,14 @@ export class HostAwareSandbox implements SandboxProvider {
     if (computer.kind === "desktop" && !(await this.hostEnabled()))
       throw new Error("Local computer access is disabled");
     yield* this.route(computer).execute(computer, request, context);
+  }
+
+  async openProcess(computer: ComputerRef, request: CommandRequest, context: AdapterContext) {
+    if (computer.kind === "desktop" && !(await this.hostEnabled()))
+      throw new Error("Local computer access is disabled");
+    const provider = this.route(computer);
+    if (!provider.openProcess) throw new Error("Duplex processes are unavailable on this computer");
+    return provider.openProcess(computer, request, context);
   }
 
   workspaceDirectories(

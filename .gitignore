@@ -28,6 +28,8 @@ apps/mobile/android
 apps/mobile/ios
 packages/db/src/generated
 infra/sandboxes/supervisor/dist
+infra/sandboxes/computer/generated
+infra/sandboxes/computer/vendor
 *.log
 .vercel
 .cache

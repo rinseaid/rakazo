@@ -65,6 +65,7 @@ export type ModelConnectIntent = {
     provider: string;
     modelId: string;
     credentialId?: string;
+    nativeGeneration?: string;
   }) => void | Promise<void>;
 };
 
@@ -102,6 +103,10 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
     setCredentialIdState(next);
   };
   const [modelId, setModelId] = useState("");
+  const [nativeGeneration, setNativeGeneration] = useState<{
+    credentialId: string;
+    generation: string;
+  } | null>(null);
   const modelIdRef = useRef(modelId);
   modelIdRef.current = modelId;
   const [enabledModelIds, setEnabledModelIds] = useState<string[]>([]);
@@ -154,13 +159,47 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
   } = useModelOAuthSignIn({
     onClearError: () => setError(null),
     onError: setError,
-    onFinished: async (_controller, credentialId) => {
+    onFinished: async (_controller, connectedCredentialId, result) => {
       // A new account's later saves update it rather than adding another.
-      setCredentialId(credentialId);
-      await refresh();
+      setCredentialId(connectedCredentialId);
+      setNativeGeneration(null);
       const started = oauthChoiceRef.current;
       oauthChoiceRef.current = null;
-      if (started) await started.intent?.onConnected?.({ ...started.choice, credentialId });
+      if (result.authKind === "native") {
+        // OAuth refresh replaces the profile and invalidates prior discovery.
+        // Re-discover before displaying or saving any account model.
+        const discovery = await rpc.models.probeCatalog({
+          provider: "google-antigravity",
+          credentialId: connectedCredentialId,
+        });
+        if (!("generation" in discovery) || !discovery.generation) {
+          setError(t`Could not discover models for this account. Try again.`);
+          return;
+        }
+        setNativeGeneration({
+          credentialId: connectedCredentialId,
+          generation: discovery.generation,
+        });
+        await refresh();
+        if (result.needsModelSelection || !result.modelId) {
+          setNotice(t`Choose a model from this account to finish setup.`);
+          return;
+        }
+        if (started?.intent)
+          await started.intent.onConnected?.({
+            provider: "google-antigravity",
+            modelId: result.modelId,
+            credentialId: connectedCredentialId,
+            nativeGeneration: discovery.generation,
+          });
+        return;
+      }
+      await refresh();
+      if (started && !result.needsModelSelection)
+        await started.intent?.onConnected?.({
+          ...started.choice,
+          credentialId: connectedCredentialId,
+        });
     },
   });
 
@@ -203,19 +242,36 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
       : undefined;
     // A connection removed elsewhere leaves the dialog connecting a new one.
     if (credentialIdRef.current && !nextCredential) setCredentialId(null);
+    const nextNativeModelId =
+      nextProvider === "google-antigravity" && nextCredential?.authKind === "native"
+        ? (nextCredential.modelId ?? "")
+        : undefined;
+    const nativeModelAvailable =
+      nextNativeModelId !== undefined &&
+      nextCatalog.some(
+        (entry) =>
+          entry.provider === nextProvider &&
+          entry.id === nextNativeModelId &&
+          !entry.placeholder &&
+          entry.credentialIds?.includes(nextCredential!.id),
+      );
     const nextModel =
-      nextProvider === OPENAI_COMPATIBLE_PROVIDER_ID
-        ? (nextCredential?.modelId ??
-          (nextMe.defaultProvider === OPENAI_COMPATIBLE_PROVIDER_ID ? nextMe.defaultModel : "") ??
-          "")
-        : (nextCatalog.find((entry) => entry.provider === nextProvider && entry.id === modelId)
-            ?.id ??
-          pickCatalogModelId(
-            nextCatalog,
-            nextProvider,
-            nextCredential?.modelId ??
-              (nextProvider === nextMe.defaultProvider ? nextMe.defaultModel : null),
-          ));
+      nextNativeModelId !== undefined
+        ? nativeModelAvailable
+          ? nextNativeModelId
+          : ""
+        : nextProvider === OPENAI_COMPATIBLE_PROVIDER_ID
+          ? (nextCredential?.modelId ??
+            (nextMe.defaultProvider === OPENAI_COMPATIBLE_PROVIDER_ID ? nextMe.defaultModel : "") ??
+            "")
+          : (nextCatalog.find((entry) => entry.provider === nextProvider && entry.id === modelId)
+              ?.id ??
+            pickCatalogModelId(
+              nextCatalog,
+              nextProvider,
+              nextCredential?.modelId ??
+                (nextProvider === nextMe.defaultProvider ? nextMe.defaultModel : null),
+            ));
     if (selectionRevision === selectionRevisionRef.current) {
       invalidatePreflight();
       resetOpenAiCompatibleProbe();
@@ -295,7 +351,14 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
     [credentials],
   );
   const modelsForProvider = catalog.filter((entry) => entry.provider === provider);
-  const selected = modelsForProvider.find((entry) => entry.id === modelId) ?? modelsForProvider[0];
+  const selected =
+    modelsForProvider.find((entry) => entry.id === modelId) ??
+    (provider === "google-antigravity" && credentialId
+      ? (modelsForProvider.find(
+          (entry) => !entry.placeholder && entry.credentialIds?.includes(credentialId),
+        ) ?? modelsForProvider.find((entry) => entry.placeholder))
+      : undefined) ??
+    modelsForProvider[0];
   selectedLabelRef.current = selected?.label;
   const selectedProviderName = compatibleConnectionName(
     baseUrl,
@@ -360,6 +423,7 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
     !isOpenAiCompatible &&
     Boolean(credential) &&
     (maxTokens.trim() !== connectionMaxTokensField(provider, credential?.maxTokens) ||
+      (provider === "google-antigravity" && modelId !== (credential?.modelId ?? "")) ||
       (isCloudflare &&
         (accountId.trim() !== (credential?.accountId ?? "") ||
           gatewayId.trim() !== (credential?.gatewayId ?? ""))));
@@ -403,6 +467,20 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
     );
   }
 
+  function stageCatalogModelId(nextModelId: string) {
+    setModelId(nextModelId);
+    const nextEntry = catalog.find(
+      (entry) => entry.provider === provider && entry.id === nextModelId,
+    );
+    setThinkingLevel(
+      clampCatalogThinkingLevel(
+        credential?.modelId === nextModelId ? credential.thinkingLevel : null,
+        nextEntry?.thinkingLevels,
+      ) as ThinkingLevel | null,
+    );
+    invalidatePreflight();
+  }
+
   /** Opens a connection (by id) or a new one (null) for the provider. */
   function chooseProvider(
     nextProvider: string,
@@ -417,14 +495,24 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
       : undefined;
     setCredentialId(nextCredential?.id ?? null);
     const nextModelId =
-      nextProvider === OPENAI_COMPATIBLE_PROVIDER_ID
-        ? (nextCredential?.modelId ?? "")
-        : pickCatalogModelId(
-            catalog,
-            nextProvider,
-            nextCredential?.modelId ??
-              (nextProvider === me?.defaultProvider ? me.defaultModel : null),
-          );
+      nextProvider === "google-antigravity" && nextCredential?.authKind === "native"
+        ? catalog.some(
+            (entry) =>
+              entry.provider === nextProvider &&
+              entry.id === nextCredential.modelId &&
+              !entry.placeholder &&
+              entry.credentialIds?.includes(nextCredential.id),
+          )
+          ? (nextCredential.modelId ?? "")
+          : ""
+        : nextProvider === OPENAI_COMPATIBLE_PROVIDER_ID
+          ? (nextCredential?.modelId ?? "")
+          : pickCatalogModelId(
+              catalog,
+              nextProvider,
+              nextCredential?.modelId ??
+                (nextProvider === me?.defaultProvider ? me.defaultModel : null),
+            );
     setProvider(nextProvider);
     setReasoning(nextCredential?.reasoning ?? false);
     const nextEntry = catalog.find(
@@ -544,7 +632,7 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
     );
     if (!preflightStillCurrent(revision)) return;
     const result = await runModelConnectionPreflight({
-      authKind: "oauth",
+      authKind: credential?.authKind === "native" ? "native" : "oauth",
       provider: selected.provider,
       ...stored,
     });
@@ -561,6 +649,11 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
   // without touching the key field; key replacement stays on its own button.
   async function connectKey({ settingsOnly = false }: { settingsOnly?: boolean } = {}) {
     if (!selected) return;
+    if (
+      provider === "google-antigravity" &&
+      (!modelId || selected.placeholder || selected.id !== modelId)
+    )
+      return;
     // Closing the dialog mid-save must not drop the slot this connection is for.
     const intent = intentRef.current;
     const newKey = settingsOnly ? "" : apiKey.trim();
@@ -624,6 +717,17 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
     const form = formRevisionRef.current;
     const stillSelected = () => form === formRevisionRef.current;
     try {
+      let currentNativeGeneration =
+        credential?.id && nativeGeneration?.credentialId === credential.id
+          ? nativeGeneration.generation
+          : undefined;
+      if (provider === "google-antigravity" && credential?.id && !currentNativeGeneration) {
+        const discovery = await rpc.models.probeCatalog({ provider, credentialId: credential.id });
+        if (!("generation" in discovery) || !discovery.generation)
+          throw new Error("Could not discover models for this account.");
+        currentNativeGeneration = discovery.generation;
+        setNativeGeneration({ credentialId: credential.id, generation: discovery.generation });
+      }
       const saved = await rpc.models.connect(
         isOpenAiCompatible
           ? {
@@ -656,7 +760,14 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
                 ? { thinkingLevel: stagedThinking }
                 : {}),
               ...(intent ? { makeDefault: intent.makeDefault, scope } : {}),
-              maxTokens: parsedMaxTokens ?? null,
+              ...(!savingLimitOnly ||
+              settingsOnly ||
+              maxTokens.trim() !== connectionMaxTokensField(provider, credential?.maxTokens)
+                ? { maxTokens: parsedMaxTokens ?? null }
+                : {}),
+              ...(provider === "google-antigravity" && currentNativeGeneration
+                ? { nativeGeneration: currentNativeGeneration }
+                : {}),
               label: selected.providerName ?? selected.provider,
               credentialId: credential?.id ?? null,
             },
@@ -675,6 +786,9 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
           provider: selected.provider,
           modelId: activeModelId,
           credentialId: saved?.id,
+          ...(provider === "google-antigravity" && currentNativeGeneration
+            ? { nativeGeneration: currentNativeGeneration }
+            : {}),
         });
       // A fresh connection speaks for itself through the Active model row.
       if (isOpenAiCompatible || savingLimitOnly) setNotice(t`Saved.`);
@@ -714,6 +828,7 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
     if (!selected) return;
     setNotice(null);
     const intent = intentRef.current;
+    const deferModelSelection = provider === "google-antigravity";
     oauthChoiceRef.current = {
       choice: { provider: selected.provider, modelId: selected.id },
       intent,
@@ -721,8 +836,13 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
     void startSubscriptionSignIn({
       provider: selected.provider,
       credentialId: credential?.id ?? null,
-      modelId: selected.id,
-      ...(intent ? { makeDefault: intent.makeDefault, scope } : {}),
+      ...(!deferModelSelection ? { modelId: selected.id } : {}),
+      ...(deferModelSelection ? { deferModelSelection: true } : {}),
+      ...(provider === "google-antigravity"
+        ? { makeDefault: false, ...(intent ? { scope } : {}) }
+        : intent
+          ? { makeDefault: intent.makeDefault, scope }
+          : {}),
       thinkingLevel: clampCatalogThinkingLevel(
         thinkingLevel,
         selected.thinkingLevels,
@@ -814,6 +934,7 @@ export function useModelSettings(onClose: () => void, scope: SettingsScope) {
     setSupportsImages,
     setThinkingLevel,
     settingsDirty,
+    stageCatalogModelId,
     stageCompatibleModelId,
     submitOAuthCode,
     subscriptionSignIn,

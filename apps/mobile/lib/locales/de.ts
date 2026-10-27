@@ -468,7 +468,13 @@ export const DE_MESSAGES: Record<string, string> = {
   "You have control": "Du hast die Kontrolle",
   // app/(settings)/models.tsx
   "Active model": "Aktives Modell",
+  "Authorization callback URL": "Autorisierungs-Callback-URL",
   "Authorization code": "Autorisierungscode",
+  "Choose a current model from this account to finish setup.":
+    "Wähle ein aktuelles Modell aus diesem Konto, um die Einrichtung abzuschließen.",
+  "Choose a model from this account to finish setup.":
+    "Wähle ein Modell aus diesem Konto, um die Einrichtung abzuschließen.",
+  "Then paste the complete callback URL here.": "Füge dann hier die vollständige Callback-URL ein.",
   "Configured by deployment": "Durch die Bereitstellung konfiguriert",
   "Use your own key": "Eigenen Schlüssel verwenden",
   "Uses this server's own {source} credentials to access {provider}.":

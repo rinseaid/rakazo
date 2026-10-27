@@ -109,6 +109,23 @@ describe("attempt correlation", () => {
     expect(received).toEqual(["ac_123"]);
   });
 
+  it("uses only the original complete callback URL when requested", () => {
+    const { emit } = bridgeEmitting();
+    const received: string[] = [];
+    onDesktopOAuthCallback((value) => received.push(value), "verifier_456", "url");
+
+    emit({ code: "ac_123", state: "verifier_456" });
+    expect(received).toEqual([]);
+    emit({
+      code: "ac_123",
+      state: "verifier_456",
+      callbackUrl: "http://127.0.0.1:51182/oauth/callback?code=ac_123&state=verifier_456",
+    });
+    expect(received).toEqual([
+      "http://127.0.0.1:51182/oauth/callback?code=ac_123&state=verifier_456",
+    ]);
+  });
+
   it("no-ops in a browser without the desktop bridge", () => {
     vi.stubGlobal("window", {});
     const received: string[] = [];

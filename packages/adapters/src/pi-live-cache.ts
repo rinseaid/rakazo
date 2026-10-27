@@ -19,6 +19,7 @@ export class LiveCatalogCache<T> {
       deadlineMs: number;
       staleMaxAgeMs: number;
       maxEntries: number;
+      staleOnError?: boolean;
     },
   ) {}
 
@@ -59,7 +60,8 @@ export class LiveCatalogCache<T> {
         const next = models
           ? { models, fetchedAt: this.now(), expiresAt: this.now() + this.options.ttlMs }
           : {
-              models: entry && this.trusted(entry),
+              models:
+                this.options.staleOnError === false ? undefined : entry && this.trusted(entry),
               fetchedAt: entry?.fetchedAt ?? this.now(),
               expiresAt: this.now() + this.options.failureTtlMs,
             };
