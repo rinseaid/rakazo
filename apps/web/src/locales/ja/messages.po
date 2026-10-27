@@ -6147,3 +6147,44 @@ msgstr "Return JSON with named windows and percent used."
 #: src/lib/user-error.ts
 msgid "Your voice provider key was rejected."
 msgstr "音声プロバイダーのキーが拒否されました。"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Sort by"
+msgstr "並べ替え"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Most remaining"
+msgstr "残量が多い順"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Least remaining"
+msgstr "残量が少ない順"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Alphabetical"
+msgstr "アルファベット順"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Remaining quota"
+msgstr "残りの利用枠"
+
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Order"
+msgstr "順序"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Primary first"
+msgstr "プライマリを先に"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Backups first"
+msgstr "バックアップを先に"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "A–Z"
+msgstr "A–Z"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Z–A"
+msgstr "Z–A"

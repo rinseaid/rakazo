@@ -1,14 +1,24 @@
-import type { UsageSummary } from "@rakazo/contracts";
+import type { ModelQuota, ModelRoleView, UsageSummary } from "@rakazo/contracts";
 import { connectionDisplayName, connectionUsageGroups } from "@rakazo/contracts";
+import type { ModelUsageSort, ModelUsageSortInverted } from "@rakazo/core";
+import { modelUsageRoleRank, sortModelUsageEntries } from "@rakazo/core";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { ScrollView, StyleSheet } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ConnectionQuota } from "../../components/connection-quota";
+import { MenuPicker } from "../../components/menu-picker";
+import { NativeSegmentedControl } from "../../components/native-segmented-control";
 import { SettingsGroup, SettingsRow } from "../../components/settings-group";
 import type { MobileModel, MobileModelCredential } from "../../lib/api";
 import { rpc } from "../../lib/api";
 import { dateLocaleForUi, useI18n } from "../../lib/i18n";
+import {
+  loadModelUsageSort,
+  loadModelUsageSortInverted,
+  saveModelUsageSort,
+  saveModelUsageSortInverted,
+} from "../../lib/model-usage-sort-preference";
 import { native } from "../../lib/native";
 import { ACCOUNT_SETTINGS } from "../../lib/settings-target";
 import { useSideInsets } from "../../lib/side-insets";
@@ -20,10 +30,49 @@ export default function Usage() {
   const [catalog, setCatalog] = useState<MobileModel[]>([]);
   const [failed, setFailed] = useState(false);
   const [summary, setSummary] = useState<UsageSummary | null>(null);
+  const [sortOrder, setSortOrder] = useState<ModelUsageSort>("quota");
+  const [sortInverted, setSortInverted] = useState<ModelUsageSortInverted>(false);
+  const [mainRole, setMainRole] = useState<ModelRoleView | null>(null);
+  const [approvalRole, setApprovalRole] = useState<ModelRoleView | null>(null);
+  const [quotas, setQuotas] = useState<Record<string, ModelQuota>>({});
+  const [quotaLoading, setQuotaLoading] = useState<Record<string, boolean>>({});
+  const loadQuota = useCallback(
+    async (credentialId: string, active: () => boolean = () => true) => {
+      if (!active()) return;
+      setQuotaLoading((current) => ({ ...current, [credentialId]: true }));
+      try {
+        const quota = await rpc<ModelQuota>("models/quota", { credentialId });
+        if (active()) setQuotas((current) => ({ ...current, [credentialId]: quota }));
+      } catch {
+        if (active()) {
+          setQuotas((current) => ({
+            ...current,
+            [credentialId]: {
+              credentialId,
+              status: "unavailable",
+              observedAt: null,
+              checkedAt: new Date().toISOString(),
+              identityVerified: false,
+              windows: [],
+            },
+          }));
+        }
+      } finally {
+        if (active()) setQuotaLoading((current) => ({ ...current, [credentialId]: false }));
+      }
+    },
+    [],
+  );
   useFocusEffect(
     useCallback(() => {
       let active = true;
       setFailed(false);
+      void loadModelUsageSort().then((value) => {
+        if (active) setSortOrder(value);
+      });
+      void loadModelUsageSortInverted().then((value) => {
+        if (active) setSortInverted(value);
+      });
       void rpc<UsageSummary>("usage/summary")
         .then((value) => {
           if (active) setSummary(value);
@@ -32,11 +81,19 @@ export default function Usage() {
       void Promise.all([
         rpc<MobileModelCredential[]>("models/credentials"),
         rpc<MobileModel[]>("models/list").catch(() => []),
+        rpc<ModelRoleView>("models/role", { role: "main", scope: "account" }).catch(() => null),
+        rpc<ModelRoleView>("models/role", { role: "approval", scope: "account" }).catch(() => null),
       ])
-        .then(([connections, models]) => {
+        .then(([connections, models, main, approval]) => {
           if (active) {
             setCredentials(connections);
             setCatalog(models);
+            setMainRole(main);
+            setApprovalRole(approval);
+            const ids = connectionUsageGroups(connections).map(({ credential }) => credential.id);
+            setQuotas({});
+            setQuotaLoading(Object.fromEntries(ids.map((id) => [id, true])));
+            void Promise.all(ids.map((id) => loadQuota(id, () => active)));
           }
         })
         .catch(() => {
@@ -45,9 +102,33 @@ export default function Usage() {
       return () => {
         active = false;
       };
-    }, []),
+    }, [loadQuota]),
   );
   const groups = connectionUsageGroups(credentials ?? []);
+  const entries = groups.map(({ credential }) => {
+    const providerName =
+      credential.provider === "openai-codex"
+        ? "Codex"
+        : credential.provider === "anthropic" && credential.authKind === "oauth"
+          ? "Claude subscription"
+          : (catalog.find((entry) => entry.provider === credential.provider)?.providerName ??
+            credential.provider);
+    const label = connectionDisplayName(credential, providerName);
+    return {
+      id: credential.id,
+      credential,
+      label,
+      quota: quotas[credential.id] ?? null,
+      mainRank: modelUsageRoleRank(mainRole, credential.id, credential.provider),
+      approvalRank: modelUsageRoleRank(approvalRole, credential.id, credential.provider),
+    };
+  });
+  const sortedEntries = sortModelUsageEntries(
+    entries,
+    sortOrder,
+    sortInverted,
+    dateLocaleForUi(locale),
+  );
   return (
     <SafeAreaView edges={["bottom"]} style={styles.screen}>
       <ScrollView
@@ -69,6 +150,60 @@ export default function Usage() {
             />
           </SettingsGroup>
         ) : null}
+        {credentials && groups.length ? (
+          <SettingsGroup>
+            <MenuPicker
+              label={t("Sort by")}
+              value={sortOrder}
+              choices={[
+                { key: "main-model", label: t("Main model") },
+                { key: "approval-model", label: t("Approval model") },
+                { key: "quota", label: t("Remaining quota") },
+                { key: "alphabetical", label: t("Alphabetical") },
+              ]}
+              onChange={(value) => {
+                const next = value as ModelUsageSort;
+                setSortOrder(next);
+                void saveModelUsageSort(next);
+              }}
+            />
+          </SettingsGroup>
+        ) : null}
+        {credentials && groups.length ? (
+          <SettingsGroup label={t("Order")}>
+            <View style={styles.segmentedControl}>
+              <NativeSegmentedControl
+                accessibilityLabel={t("Order")}
+                value={sortInverted ? "inverted" : "normal"}
+                onChange={(value) => {
+                  const next = value === "inverted";
+                  setSortInverted(next);
+                  void saveModelUsageSortInverted(next);
+                }}
+                options={[
+                  {
+                    value: "normal",
+                    label:
+                      sortOrder === "quota"
+                        ? t("Most remaining")
+                        : sortOrder === "alphabetical"
+                          ? t("A–Z")
+                          : t("Primary first"),
+                  },
+                  {
+                    value: "inverted",
+                    label:
+                      sortOrder === "quota"
+                        ? t("Least remaining")
+                        : sortOrder === "alphabetical"
+                          ? t("Z–A")
+                          : t("Backups first"),
+                  },
+                ]}
+              />
+            </View>
+          </SettingsGroup>
+        ) : null}
         {failed ? (
           <SettingsGroup>
             <SettingsRow title={t("Could not load usage")} />
@@ -84,21 +219,17 @@ export default function Usage() {
             <SettingsRow title={t("No connected providers")} />
           </SettingsGroup>
         ) : null}
-        {groups.map(({ credential }) => {
-          const name =
-            credential.provider === "openai-codex"
-              ? "Codex"
-              : credential.provider === "anthropic" && credential.authKind === "oauth"
-                ? "Claude subscription"
-                : (catalog.find((entry) => entry.provider === credential.provider)?.providerName ??
-                  credential.provider);
+        {sortedEntries.map(({ credential, label, quota }) => {
           return (
             <ConnectionQuota
               key={credential.id}
               credentialId={credential.id}
               target={ACCOUNT_SETTINGS}
-              label={connectionDisplayName(credential, name)}
+              label={label}
               readOnly
+              quotaOverride={quota}
+              quotaLoading={quotaLoading[credential.id] ?? true}
+              onRefreshQuota={() => void loadQuota(credential.id)}
             />
           );
         })}
@@ -116,4 +247,5 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     gap: 28,
   },
+  segmentedControl: { paddingHorizontal: 12, paddingVertical: 8 },
 });

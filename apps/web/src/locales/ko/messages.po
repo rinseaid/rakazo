@@ -6147,3 +6147,44 @@ msgstr "Return JSON with named windows and percent used."
 #: src/lib/user-error.ts
 msgid "Your voice provider key was rejected."
 msgstr "음성 서비스에서 키를 거부했습니다."
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Sort by"
+msgstr "정렬 기준"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Most remaining"
+msgstr "잔여량 많은 순"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Least remaining"
+msgstr "잔여량 적은 순"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Alphabetical"
+msgstr "가나다순"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Remaining quota"
+msgstr "남은 할당량"
+
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Order"
+msgstr "순서"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Primary first"
+msgstr "기본 모델 먼저"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Backups first"
+msgstr "백업 먼저"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "A–Z"
+msgstr "A–Z"
+
+#: src/components/usage/provider-quota-stack.tsx
+msgid "Z–A"
+msgstr "Z–A"

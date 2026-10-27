@@ -12,11 +12,17 @@ export function ConnectionQuota({
   target,
   label,
   readOnly = false,
+  quotaOverride,
+  quotaLoading,
+  onRefreshQuota,
 }: {
   credentialId: string;
   target: SettingsTarget;
   label?: string;
   readOnly?: boolean;
+  quotaOverride?: ModelQuota | null;
+  quotaLoading?: boolean;
+  onRefreshQuota?: () => void;
 }) {
   const { t } = useI18n();
   const rpc = useMemo(() => settingsRpc(target), [target]);
@@ -24,8 +30,10 @@ export function ConnectionQuota({
   const [pending, setPending] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [routing, setRouting] = useState(false);
+  const hasQuotaOverride = quotaOverride !== undefined;
   useFocusEffect(
     useCallback(() => {
+      if (hasQuotaOverride) return;
       let canceled = false;
       const load = async () => {
         setPending(true);
@@ -44,27 +52,29 @@ export function ConnectionQuota({
         canceled = true;
         clearInterval(timer);
       };
-    }, [credentialId, rpc, refresh]),
+    }, [credentialId, hasQuotaOverride, rpc, refresh]),
   );
-  if (quota?.status === "unsupported" && !readOnly) return null;
+  const currentQuota = hasQuotaOverride ? quotaOverride : quota;
+  const currentPending = hasQuotaOverride ? (quotaLoading ?? false) : pending;
+  if (currentQuota?.status === "unsupported" && !readOnly) return null;
   return (
     <>
       <SettingsGroup
         label={label ?? t("Quota")}
         footer={
-          quota?.observedAt
-            ? `${t("Updated")} ${new Date(quota.observedAt).toLocaleString()}`
+          currentQuota?.observedAt
+            ? `${t("Updated")} ${new Date(currentQuota.observedAt).toLocaleString()}`
             : undefined
         }
       >
-        {quota?.status === "unsupported" ? (
+        {currentQuota?.status === "unsupported" ? (
           <SettingsRow title={t("Usage not reported by provider")} />
         ) : null}
-        {quota?.status === "stale" ? <SettingsRow title={t("Last known usage")} /> : null}
-        {!quota || quota.status === "unavailable" ? (
-          <SettingsRow title={pending ? t("Loading") : t("Quota unavailable")} />
+        {currentQuota?.status === "stale" ? <SettingsRow title={t("Last known usage")} /> : null}
+        {!currentQuota || currentQuota.status === "unavailable" ? (
+          <SettingsRow title={currentPending ? t("Loading") : t("Quota unavailable")} />
         ) : null}
-        {quota?.windows.map((window) => (
+        {currentQuota?.windows.map((window) => (
           <SettingsRow
             key={window.id}
             title={
@@ -90,8 +100,8 @@ export function ConnectionQuota({
         ))}
         <SettingsRow
           title={t("Refresh")}
-          disabled={pending}
-          onPress={() => setRefresh((value) => value + 1)}
+          disabled={currentPending}
+          onPress={hasQuotaOverride ? onRefreshQuota : () => setRefresh((value) => value + 1)}
         />
         {!readOnly ? (
           <SettingsRow
