@@ -4,7 +4,7 @@ import { MCP_APPROVAL_CARD_WINDOW, toolRequiresApproval } from "@rakazo/core";
 import { availableInSpace, itemSecretIn } from "@rakazo/db";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CORE_BUILTIN_TOOL_NAMES, isDeferredTool } from "./builtin-tool-bridge.js";
-import { builtinAgentTools } from "./builtin-tools.js";
+import { builtinAgentTools } from "./builtin.tool-definition.js";
 import { listMcpServersForBot, requestMcpServerFromTool } from "./mcp-server-access.js";
 import type * as RunMessages from "./run-messages.js";
 import { READ_ONLY_AGENT_TOOLS } from "./run-tool-selection.js";
